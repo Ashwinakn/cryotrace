@@ -32,8 +32,8 @@ env/
 data/
 streaming/spark/checkpoint*/
 
-# ── Fabric Samples (100MB+ binary downloads — not source code) ───────────────
-fabric-samples/
+# ── Fabric Network (Go vendor = like node_modules, never commit) ──────────────
+fabric-network/chaincode/cryotrace/vendor/
 
 # ── Docker / Installer Binaries ───────────────────────────────────────────────
 DockerInstaller.exe
