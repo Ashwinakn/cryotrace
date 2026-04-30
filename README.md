@@ -178,9 +178,6 @@ Anomaly options: `none`, `temp_breach`, `temp_freeze`, `temp_spike`, `door_open`
 
 | Role | Email | Password |
 |---|---|---|
-| Admin | admin@cryotrace.io | cryotrace123 |
-| Regulator | regulator@cryotrace.io | cryotrace123 |
-| Operator | operator@cryotrace.io | cryotrace123 |
 | Vendor | vendor@cryotrace.io | cryotrace123 |
 | Hub | hub@cryotrace.io | cryotrace123 |
 | Customer | customer@cryotrace.io | cryotrace123 |
