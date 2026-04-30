@@ -32,7 +32,8 @@ env/
 data/
 streaming/spark/checkpoint*/
 
-# ── Fabric Network (Go vendor = like node_modules, never commit) ──────────────
+# ── Fabric (binary downloads and Go vendor — never commit) ────────────────────
+fabric-samples/
 fabric-network/chaincode/cryotrace/vendor/
 
 # ── Docker / Installer Binaries ───────────────────────────────────────────────
