@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { shipmentsApi, handoffsApi, documentsApi, sensorsApi, aiApi } from '../api'
+import { shipmentsApi, handoffsApi, documentsApi, sensorsApi, aiApi, vehiclesApi } from '../api'
 import { analyticsApi } from '../api'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet'
@@ -59,6 +59,7 @@ export default function ShipmentDetailPage() {
   const [anomalies, setAnomalies] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [runningAI, setRunningAI] = useState(false)
+  const [vehicle, setVehicle] = useState<any>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const [isLive, setIsLive] = useState(false)
 
@@ -96,6 +97,15 @@ export default function ShipmentDetailPage() {
       // Get latest AI result
       const hist = await aiApi.history(id)
       if (hist.data.length > 0) setAiResult(hist.data[0])
+      // Load active vehicle for this shipment's device
+      try {
+        const vRes = await vehiclesApi.list()
+        const latestDeviceId = sn.data.length > 0 ? sn.data[sn.data.length - 1].device_id : null
+        if (latestDeviceId) {
+          const v = vRes.data.find((v: any) => v.device_id === latestDeviceId)
+          if (v) setVehicle(v)
+        }
+      } catch {}
     } catch { toast.error('Failed to load shipment') }
     setLoading(false)
   }
@@ -164,6 +174,7 @@ export default function ShipmentDetailPage() {
             mapCenter={mapCenter} 
             onRunAI={runAI}
             runningAI={runningAI}
+            vehicle={vehicle}
           />
         )}
         {tab === 'provenance' && <ProvenanceView handoffs={handoffs} shipmentId={id!} />}
@@ -175,9 +186,17 @@ export default function ShipmentDetailPage() {
   )
 }
 
-function DashboardView({ shipment, sensors, aiResult, anomalies, mapPoints, mapCenter, onRunAI, runningAI }: any) {
+function DashboardView({ shipment, sensors, aiResult, anomalies, mapPoints, mapCenter, onRunAI, runningAI, vehicle }: any) {
   const latestSensor = sensors.length > 0 ? sensors[sensors.length - 1] : null;
-  
+
+  const vehicleTypeLabel: Record<string, string> = {
+    truck: 'Truck', aircraft: 'Aircraft', ship: 'Ship', warehouse: 'Warehouse'
+  }
+
+  const isTempSafe = latestSensor && shipment.temp_min_required != null && shipment.temp_max_required != null
+    ? (latestSensor.temperature >= shipment.temp_min_required && latestSensor.temperature <= shipment.temp_max_required)
+    : true
+
   return (
     <div className="dashboard-grid">
       <div className="flex flex-direction-column gap-24">
@@ -186,7 +205,9 @@ function DashboardView({ shipment, sensors, aiResult, anomalies, mapPoints, mapC
           <div className="card-header" style={{ padding: '20px 24px' }}>
             <span className="card-title">Live Tracking & Status</span>
             <div className="flex items-center gap-12">
-              <span className="badge badge-green">Safe Temp</span>
+              <span className={`badge badge-${isTempSafe ? 'green' : 'red'}`}>
+                {isTempSafe ? 'Temp OK' : 'Temp BREACH'}
+              </span>
               <div className="live-pulse" />
             </div>
           </div>
@@ -199,7 +220,7 @@ function DashboardView({ shipment, sensors, aiResult, anomalies, mapPoints, mapC
           </div>
           <div className="card-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, background: '#e2e8f0' }}>
             {[
-              { label: 'Current Temp', value: latestSensor ? `${latestSensor.temperature.toFixed(1)}°C` : '--', color: 'blue' },
+              { label: 'Current Temp', value: latestSensor ? `${latestSensor.temperature.toFixed(1)}°C` : '--', color: isTempSafe ? 'blue' : 'red' },
               { label: 'Humidity', value: latestSensor ? `${latestSensor.humidity.toFixed(0)}%` : '--', color: 'gray' },
               { label: 'Battery', value: latestSensor ? `${latestSensor.battery.toFixed(0)}%` : '--', color: latestSensor?.battery < 20 ? 'red' : 'green' },
               { label: 'Integrity', value: '100%', color: 'green' }
@@ -210,6 +231,24 @@ function DashboardView({ shipment, sensors, aiResult, anomalies, mapPoints, mapC
               </div>
             ))}
           </div>
+
+          {/* Vehicle info strip — auto-populated from the IoT device push */}
+          {vehicle && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+              {[
+                { label: 'Vehicle', value: vehicle.vehicle_number },
+                { label: 'Type', value: vehicleTypeLabel[vehicle.vehicle_type] || vehicle.vehicle_type },
+                { label: 'Driver', value: vehicle.driver_name || 'N/A' },
+                { label: 'Carrier', value: vehicle.carrier_name || 'N/A' },
+                { label: 'Last Signal', value: vehicle.last_seen ? new Date(vehicle.last_seen + 'Z').toLocaleTimeString() : '--' },
+              ].map((item, i) => (
+                <div key={item.label} style={{ padding: '10px 16px', borderRight: i < 4 ? '1px solid #e2e8f0' : 'none' }}>
+                  <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{item.label}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b', marginTop: 2 }}>{item.value}</div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* AI Insights */}

@@ -68,6 +68,53 @@ class AnomalyType(str, enum.Enum):
     LIGHT_EXPOSURE = "light_exposure"
 
 
+class VehicleType(str, enum.Enum):
+    TRUCK     = "truck"
+    AIRCRAFT  = "aircraft"
+    SHIP      = "ship"
+    WAREHOUSE = "warehouse"
+
+
+class VehicleStatus(str, enum.Enum):
+    IDLE       = "idle"
+    LOADING    = "loading"
+    IN_TRANSIT = "in_transit"
+    ARRIVED    = "arrived"
+
+
+class Vehicle(Base):
+    """A physical transport unit (truck, aircraft, ship, warehouse bay).
+    
+    One Vehicle is assigned one IoT device (magnetic latch sensor on cold storage).
+    Multiple Shipments can be loaded onto the same Vehicle leg.
+    The device reports temp+GPS for the Vehicle; all loaded shipments inherit that reading.
+    """
+    __tablename__ = "vehicles"
+
+    id             = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    vehicle_number = Column(String(100), unique=True, nullable=False, index=True)  # e.g. TN-01-AB-1234
+    vehicle_type   = Column(String(20), default=VehicleType.TRUCK.value)
+    driver_name    = Column(String(255))
+    carrier_name   = Column(String(255))  # e.g. "Maersk", "IndiGo Cargo"
+    route_name     = Column(String(100))  # e.g. "Mumbai to Delhi"
+
+    # Device binding — the LTE sensor mounted on this vehicle's cold storage
+    device_id      = Column(String(100), index=True)
+
+    # Real-time telemetry (updated on every device push)
+    current_lat    = Column(Float)
+    current_lng    = Column(Float)
+    current_temp   = Column(Float)
+    current_humidity = Column(Float)
+    current_battery  = Column(Float)
+    last_seen      = Column(DateTime)
+
+    status         = Column(String(20), default=VehicleStatus.IDLE.value)
+    created_at     = Column(DateTime, default=datetime.utcnow)
+
+    sensor_logs = relationship("SensorLog", back_populates="vehicle")
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -187,21 +234,23 @@ class DocumentRecord(Base):
 class SensorLog(Base):
     __tablename__ = "sensor_logs"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id          = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     shipment_id = Column(String(36), ForeignKey("shipments.id"), nullable=False)
-    device_id = Column(String(100))
+    vehicle_id  = Column(String(36), ForeignKey("vehicles.id"), nullable=True)  # which vehicle carried this log
+    device_id   = Column(String(100))
     temperature = Column(Float, nullable=False)
-    humidity = Column(Float)
-    lat = Column(Float)
-    lng = Column(Float)
-    battery = Column(Float)
-    door_open = Column(Boolean, default=False)
-    shock = Column(Boolean, default=False)
-    light = Column(Float)
-    pressure = Column(Float)
-    timestamp = Column(DateTime, nullable=False, default=datetime.utcnow)
+    humidity    = Column(Float)
+    lat         = Column(Float)
+    lng         = Column(Float)
+    battery     = Column(Float)
+    door_open   = Column(Boolean, default=False)
+    shock       = Column(Boolean, default=False)
+    light       = Column(Float)
+    pressure    = Column(Float)
+    timestamp   = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     shipment = relationship("Shipment", back_populates="sensor_logs")
+    vehicle  = relationship("Vehicle", back_populates="sensor_logs")
 
 
 class BlockchainLog(Base):

@@ -96,5 +96,11 @@ export const claimsApi = {
   stats: () => api.get('/claims/stats/summary'),
 }
 
+// ── Vehicles ──────────────────────────────────────────────────────────────
+export const vehiclesApi = {
+  list: () => api.get('/vehicles'),
+  get: (vehicleNumber: string) => api.get(`/vehicles/${vehicleNumber}`),
+}
+
 export default api
 

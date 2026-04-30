@@ -42,21 +42,45 @@ PUSH_INTERVAL_SEC  = 10             # push every 10 seconds (30s in production)
 
 # ── Predefined routes (lat, lng waypoints) ───────────────────────────────────
 ROUTES = {
-    "mumbai_to_delhi": [
-        (19.0760,  72.8777),   # Mumbai
-        (21.1458,  79.0882),   # Nagpur
-        (23.2599,  77.4126),   # Bhopal
-        (26.8467,  80.9462),   # Lucknow
-        (28.6139,  77.2090),   # Delhi
-    ],
-    "chennai_to_bangalore": [
-        (13.0827,  80.2707),   # Chennai
-        (12.9716,  77.5946),   # Bangalore
-    ],
-    "kolkata_to_bhubaneswar": [
-        (22.5726,  88.3639),   # Kolkata
-        (20.2961,  85.8245),   # Bhubaneswar
-    ],
+    "mumbai_to_delhi": {
+        "waypoints": [
+            (19.0760, 72.8777),   # Mumbai
+            (21.1458, 79.0882),   # Nagpur
+            (23.2599, 77.4126),   # Bhopal
+            (26.8467, 80.9462),   # Lucknow
+            (28.6139, 77.2090),   # Delhi
+        ],
+        "vehicle_type": "truck",
+        "carrier": "Blue Dart Express",
+        "description": "Mumbai to Delhi cold chain corridor",
+    },
+    "chennai_to_bangalore": {
+        "waypoints": [
+            (13.0827, 80.2707),   # Chennai
+            (12.9716, 77.5946),   # Bangalore
+        ],
+        "vehicle_type": "truck",
+        "carrier": "DTDC Logistics",
+        "description": "Chennai to Bangalore express lane",
+    },
+    "kolkata_to_bhubaneswar": {
+        "waypoints": [
+            (22.5726, 88.3639),   # Kolkata
+            (20.2961, 85.8245),   # Bhubaneswar
+        ],
+        "vehicle_type": "truck",
+        "carrier": "Safexpress",
+        "description": "Eastern corridor pharma route",
+    },
+    "mumbai_to_delhi_air": {
+        "waypoints": [
+            (19.0895, 72.8656),   # Chhatrapati Shivaji Airport
+            (28.5562, 77.1000),   # Indira Gandhi Airport
+        ],
+        "vehicle_type": "aircraft",
+        "carrier": "IndiGo Cargo",
+        "description": "Air cargo — Mumbai to Delhi",
+    },
 }
 
 
@@ -94,26 +118,41 @@ class DeviceSimulator:
         steps:          int     = 500,
         api_url:        str     = DEFAULT_API_URL,
         device_key:     str     = DEFAULT_DEVICE_KEY,
+        vehicle_number: str     = None,
+        driver_name:    str     = None,
     ):
-        self.shipment_id = shipment_id
-        self.device_id   = device_id
-        self.temp_normal = temp_normal
-        self.temp_range  = temp_range
-        self.anomaly     = anomaly
-        self.api_url     = api_url
-        self.device_key  = device_key
-        self.battery     = 100.0
-        self.step        = 0
+        self.shipment_id    = shipment_id
+        self.device_id      = device_id
+        self.temp_normal    = temp_normal
+        self.temp_range     = temp_range
+        self.anomaly        = anomaly
+        self.api_url        = api_url
+        self.device_key     = device_key
+        self.battery        = 100.0
+        self.step           = 0
+        self.route_name     = route_name
 
-        waypoints = ROUTES.get(route_name, ROUTES["mumbai_to_delhi"])
+        route_config = ROUTES.get(route_name, ROUTES["mumbai_to_delhi"])
+        waypoints = route_config["waypoints"]
+        self.vehicle_type   = route_config.get("vehicle_type", "truck")
+        self.carrier_name   = route_config.get("carrier", "CryoTrace Logistics")
+        self.route_label    = route_config.get("description", route_name)
+
+        # Auto-generate a vehicle number if not provided
+        prefix = {"truck": "TN-01", "aircraft": "VT-IDG", "ship": "MMSI"}.get(self.vehicle_type, "VH")
+        self.vehicle_number = vehicle_number or f"{prefix}-{device_id[-4:].upper()}"
+        self.driver_name    = driver_name or f"Driver-{device_id[-3:].upper()}"
+
         self.route = _interpolate_route(waypoints, steps)
         self.total_steps = len(self.route)
 
-        print(f"[Simulator] Device: {device_id}")
+        print(f"[Simulator] Device:   {device_id}")
         print(f"[Simulator] Shipment: {shipment_id}")
-        print(f"[Simulator] Route: {route_name} ({self.total_steps} positions)")
-        print(f"[Simulator] Anomaly injection: {anomaly}")
-        print(f"[Simulator] Pushing to: {api_url}/device/push every {PUSH_INTERVAL_SEC}s\n")
+        print(f"[Simulator] Vehicle:  {self.vehicle_number} ({self.vehicle_type.upper()}) | {self.carrier_name}")
+        print(f"[Simulator] Route:    {self.route_label} ({self.total_steps} positions)")
+        print(f"[Simulator] Driver:   {self.driver_name}")
+        print(f"[Simulator] Anomaly:  {anomaly}")
+        print(f"[Simulator] API:      {api_url}/device/push every {PUSH_INTERVAL_SEC}s\n")
 
     def _get_temperature(self) -> float:
         """Return a temperature reading, optionally with anomaly injection."""
@@ -164,7 +203,6 @@ class DeviceSimulator:
         pos_idx = min(self.step, self.total_steps - 1)
         lat, lng = self.route[pos_idx]
 
-        # Battery drains ~0.1% per reading
         self.battery = max(0, self.battery - 0.1)
 
         return {
@@ -183,6 +221,12 @@ class DeviceSimulator:
             "lte_provider":     random.choice(["Airtel", "Jio", "BSNL"]),
             "firmware_version": "v1.2.0",
             "timestamp":        datetime.utcnow().isoformat(),
+            # Vehicle metadata — identifies the cold storage unit carrying this shipment
+            "vehicle_number":   self.vehicle_number,
+            "vehicle_type":     self.vehicle_type,
+            "driver_name":      self.driver_name,
+            "carrier_name":     self.carrier_name,
+            "route_name":       self.route_label,
         }
 
     def run(self):
@@ -235,6 +279,8 @@ def main():
     parser.add_argument("--interval",      type=int, default=10,        help="Seconds between pushes")
     parser.add_argument("--api-url",       default=DEFAULT_API_URL,     help="CryoTrace API base URL")
     parser.add_argument("--device-key",    default=DEFAULT_DEVICE_KEY,  help="Device API key")
+    parser.add_argument("--vehicle-number", default=None,               help="Vehicle number plate/ID (auto-generated if not set)")
+    parser.add_argument("--driver-name",    default=None,               help="Driver name")
 
     args = parser.parse_args()
 
@@ -242,12 +288,14 @@ def main():
     PUSH_INTERVAL_SEC = args.interval
 
     sim = DeviceSimulator(
-        shipment_id = args.shipment_id,
-        device_id   = args.device_id,
-        route_name  = args.route,
-        anomaly     = args.anomaly,
-        api_url     = args.api_url,
-        device_key  = args.device_key,
+        shipment_id    = args.shipment_id,
+        device_id      = args.device_id,
+        route_name     = args.route,
+        anomaly        = args.anomaly,
+        api_url        = args.api_url,
+        device_key     = args.device_key,
+        vehicle_number = args.vehicle_number,
+        driver_name    = args.driver_name,
     )
     sim.run()
 

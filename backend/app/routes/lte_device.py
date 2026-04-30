@@ -22,7 +22,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import SensorLog, Shipment, Anomaly
+from app.models import SensorLog, Shipment, Anomaly, Vehicle, VehicleStatus
 from app.schemas import SensorOut
 from app.services.anomaly_engine import check_sensor_anomalies
 from app.kafka_producer import publish_sensor_event, publish_anomaly_alert, publish_device_status
@@ -56,10 +56,16 @@ class LTEDevicePayload(BaseModel):
     shock:            Optional[bool]    = False
     light:            Optional[float]   = None
     pressure:         Optional[float]   = None
-    signal_dbm:       Optional[int]     = None     # LTE signal strength
-    lte_provider:     Optional[str]     = None     # e.g. "Airtel", "Jio"
+    signal_dbm:       Optional[int]     = None
+    lte_provider:     Optional[str]     = None
     firmware_version: Optional[str]     = None
     timestamp:        Optional[datetime] = None
+    # Vehicle metadata — sent by device/simulator so the vehicle record is kept current
+    vehicle_number:   Optional[str]     = None   # e.g. "TN-01-AB-1234", "AI-302"
+    vehicle_type:     Optional[str]     = None   # truck | aircraft | ship | warehouse
+    driver_name:      Optional[str]     = None
+    carrier_name:     Optional[str]     = None   # e.g. "Blue Dart", "IndiGo Cargo"
+    route_name:       Optional[str]     = None   # e.g. "Mumbai to Delhi"
 
 
 # ── Main endpoint ──────────────────────────────────────────────────────────────
@@ -108,6 +114,34 @@ async def device_push(
         timestamp   = ts,
     )
     db.add(log)
+
+    # 3b — Upsert Vehicle record (create or update real-time position)
+    vehicle = None
+    if payload.vehicle_number:
+        vehicle = db.query(Vehicle).filter(Vehicle.vehicle_number == payload.vehicle_number).first()
+        if not vehicle:
+            vehicle = Vehicle(
+                vehicle_number = payload.vehicle_number,
+                vehicle_type   = payload.vehicle_type or "truck",
+                driver_name    = payload.driver_name,
+                carrier_name   = payload.carrier_name,
+                route_name     = payload.route_name,
+                device_id      = payload.device_id,
+                status         = VehicleStatus.IN_TRANSIT.value,
+            )
+            db.add(vehicle)
+            db.flush()  # get vehicle.id before linking sensor log
+        # Update real-time fields on every push
+        vehicle.current_lat      = payload.lat
+        vehicle.current_lng      = payload.lng
+        vehicle.current_temp     = payload.temperature
+        vehicle.current_humidity = payload.humidity
+        vehicle.current_battery  = payload.battery
+        vehicle.last_seen        = ts
+        vehicle.device_id        = payload.device_id
+        if payload.route_name:
+            vehicle.route_name   = payload.route_name
+        log.vehicle_id = vehicle.id
 
     # 4 — Run fast anomaly checks
     anomalies = check_sensor_anomalies(log, shipment)
