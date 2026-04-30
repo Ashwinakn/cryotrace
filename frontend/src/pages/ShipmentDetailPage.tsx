@@ -1,14 +1,13 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { shipmentsApi, handoffsApi, documentsApi, sensorsApi, aiApi, vehiclesApi } from '../api'
-import { analyticsApi } from '../api'
+import { shipmentsApi, handoffsApi, documentsApi, sensorsApi, vehiclesApi } from '../api'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import QRCode from 'qrcode'
 import toast from 'react-hot-toast'
-import { ArrowLeft, RefreshCw, Zap, QrCode, Copy, ExternalLink } from 'lucide-react'
+import { ArrowLeft, RefreshCw, QrCode, Copy } from 'lucide-react'
 
 // Fix Leaflet default icons
 delete (L.Icon.Default.prototype as any)._getIconUrl
@@ -55,13 +54,22 @@ export default function ShipmentDetailPage() {
   const [handoffs, setHandoffs] = useState<any[]>([])
   const [documents, setDocuments] = useState<any[]>([])
   const [sensors, setSensors] = useState<any[]>([])
-  const [aiResult, setAiResult] = useState<any>(null)
   const [anomalies, setAnomalies] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [runningAI, setRunningAI] = useState(false)
   const [vehicle, setVehicle] = useState<any>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const [isLive, setIsLive] = useState(false)
+
+  const fetchVehicle = async (deviceId?: string) => {
+    try {
+      const vRes = await vehiclesApi.list()
+      if (!vRes.data || vRes.data.length === 0) return
+      const match = deviceId
+        ? vRes.data.find((v: any) => v.device_id === deviceId)
+        : vRes.data[0]
+      if (match) setVehicle(match)
+    } catch {}
+  }
 
   useEffect(() => {
     loadAll()
@@ -73,53 +81,40 @@ export default function ShipmentDetailPage() {
         setSensors(prev => [...prev.slice(-200), { ...data.data, id: Date.now() }])
         setIsLive(true)
         setTimeout(() => setIsLive(false), 2000)
+        // Refresh vehicle on every live push so the strip appears as soon as simulator starts
+        fetchVehicle(data.data.device_id)
       }
     }
     return () => wsRef.current?.close()
+  }, [id])
+
+  // Poll vehicle data every 15s in case simulator starts after page load
+  useEffect(() => {
+    const timer = setInterval(() => fetchVehicle(), 15000)
+    return () => clearInterval(timer)
   }, [id])
 
   const loadAll = async () => {
     if (!id) return
     setLoading(true)
     try {
-      const [s, h, d, sn, an] = await Promise.all([
+      const [s, h, d, sn] = await Promise.all([
         shipmentsApi.get(id),
         handoffsApi.list(id),
         documentsApi.list(id),
         sensorsApi.list(id, 200),
-        aiApi.anomalies({ shipment_id: id }),
       ])
       setShipment(s.data)
       setHandoffs(h.data)
       setDocuments(d.data)
       setSensors(sn.data)
-      setAnomalies(an.data)
-      // Get latest AI result
-      const hist = await aiApi.history(id)
-      if (hist.data.length > 0) setAiResult(hist.data[0])
-      // Load active vehicle for this shipment's device
-      try {
-        const vRes = await vehiclesApi.list()
-        const latestDeviceId = sn.data.length > 0 ? sn.data[sn.data.length - 1].device_id : null
-        if (latestDeviceId) {
-          const v = vRes.data.find((v: any) => v.device_id === latestDeviceId)
-          if (v) setVehicle(v)
-        }
-      } catch {}
+      // Load vehicle — also runs on interval separately
+      const latestDeviceId = sn.data.length > 0 ? sn.data[sn.data.length - 1].device_id : null
+      await fetchVehicle(latestDeviceId)
     } catch { toast.error('Failed to load shipment') }
     setLoading(false)
   }
 
-  const runAI = async () => {
-    if (!id) return
-    setRunningAI(true)
-    try {
-      const res = await aiApi.predict(id)
-      setAiResult(res.data)
-      toast.success('AI analysis complete')
-    } catch { toast.error('AI prediction failed') }
-    setRunningAI(false)
-  }
 
   if (loading) return <div className="flex-center" style={{ height: 400 }}><div className="spinner" /></div>
   if (!shipment) return <div className="empty-state"><p>Shipment not found</p></div>
@@ -168,12 +163,9 @@ export default function ShipmentDetailPage() {
           <DashboardView 
             shipment={shipment} 
             sensors={sensors} 
-            aiResult={aiResult} 
             anomalies={anomalies} 
             mapPoints={mapPoints} 
             mapCenter={mapCenter} 
-            onRunAI={runAI}
-            runningAI={runningAI}
             vehicle={vehicle}
           />
         )}
@@ -186,7 +178,7 @@ export default function ShipmentDetailPage() {
   )
 }
 
-function DashboardView({ shipment, sensors, aiResult, anomalies, mapPoints, mapCenter, onRunAI, runningAI, vehicle }: any) {
+function DashboardView({ shipment, sensors, anomalies, mapPoints, mapCenter, vehicle }: any) {
   const latestSensor = sensors.length > 0 ? sensors[sensors.length - 1] : null;
 
   const vehicleTypeLabel: Record<string, string> = {
@@ -251,39 +243,6 @@ function DashboardView({ shipment, sensors, aiResult, anomalies, mapPoints, mapC
           )}
         </div>
 
-        {/* AI Insights */}
-        <div className="card">
-          <div className="card-header">
-            <span className="card-title">AI Predictive Insights</span>
-            <button className="btn btn-ghost btn-sm" onClick={onRunAI} disabled={runningAI}>
-              <RefreshCw size={12} className={runningAI ? 'spin' : ''} /> Recalculate
-            </button>
-          </div>
-          <div className="card-body">
-            {aiResult ? (
-              <div className="flex gap-24 items-center">
-                <div style={{ width: 140 }}>
-                   <ScoreRing value={aiResult.risk_score} label="Risk Level" invert />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div className={`alert ${aiResult.risk_score > 50 ? 'alert-high' : 'alert-low'}`} style={{ marginBottom: 12 }}>
-                    <p style={{ fontWeight: 600 }}>{aiResult.recommended_action}</p>
-                  </div>
-                  <div className="flex flex-wrap gap-8">
-                    {aiResult.top_reasons?.slice(0, 3).map((r: string) => (
-                      <span key={r} className="badge badge-gray" style={{ fontSize: 10 }}>• {r}</span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="empty-state" style={{ padding: '20px 0' }}>
-                <p>No AI prediction available yet.</p>
-                <button className="btn btn-primary btn-sm mt-8" onClick={onRunAI}>Run Analysis</button>
-              </div>
-            )}
-          </div>
-        </div>
       </div>
 
       <div className="flex flex-direction-column gap-24">

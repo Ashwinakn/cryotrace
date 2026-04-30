@@ -1,14 +1,32 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy.orm import Session
 from fastapi import Depends
-from uuid import UUID
+from typing import List, Optional
 
 from app.database import get_db
 from app.models import Shipment, HandoffRecord, DocumentRecord, BlockchainLog, Anomaly
-from app.schemas import VerifyOut, HandoffOut, DocumentOut, BlockchainLogOut, AnomalyOut
+from app.schemas import VerifyOut, HandoffOut, DocumentOut, BlockchainLogOut, AnomalyOut, ShipmentOut
 from app.blockchain.ledger import get_shipment_history_from_chain
 
 router = APIRouter()
+
+
+@router.get("/search", response_model=List[ShipmentOut])
+async def search_shipments(
+    q: str = Query(..., min_length=2, description="Batch number or partial name"),
+    db: Session = Depends(get_db),
+):
+    """Public search — allows any stakeholder to find a shipment by batch number."""
+    results = (
+        db.query(Shipment)
+        .filter(
+            (Shipment.batch_no.ilike(f"%{q}%")) |
+            (Shipment.name.ilike(f"%{q}%"))
+        )
+        .limit(10)
+        .all()
+    )
+    return [ShipmentOut.model_validate(s) for s in results]
 
 
 @router.get("/{shipment_id}", response_model=VerifyOut)

@@ -47,6 +47,8 @@ async def create_handoff(
         timestamp=timestamp, temp_min=payload.temp_min, temp_max=payload.temp_max,
         humidity=payload.humidity, prev_hash=prev_hash, handoff_hash=new_hash,
         notes=payload.notes, signature=payload.signature,
+        signed_by=payload.signed_by or None,
+        signer_role=payload.signer_role or "system",
     )
     db.add(handoff)
     db.flush()

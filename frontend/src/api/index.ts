@@ -77,6 +77,7 @@ export const analyticsApi = {
 // ── Verify ────────────────────────────────────────────────────────────────
 export const verifyApi = {
   get: (id: string) => api.get(`/verify/${id}`),
+  search: (q: string) => api.get(`/verify/search`, { params: { q } }),
 }
 
 // ── Admin ─────────────────────────────────────────────────────────────────

@@ -30,6 +30,12 @@ export default function LoginPage() {
     { label: 'Hub', email: 'hub@cryotrace.io' },
     { label: 'Customer', email: 'customer@cryotrace.io' },
   ]
+  
+  const fieldAccounts = [
+    { label: 'Warehouse', email: 'warehouse@cryotrace.io' },
+    { label: 'Driver', email: 'driver@cryotrace.io' },
+    { label: 'Customs', email: 'customs@cryotrace.io' },
+  ]
 
   return (
     <div className="login-page">
@@ -85,8 +91,16 @@ export default function LoginPage() {
 
           <div style={{ marginTop: 28 }}>
             <p style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Demo accounts (password: cryotrace123)</p>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
               {demoAccounts.map(a => (
+                <button key={a.email} className="btn btn-ghost btn-sm" style={{ flex: 1, justifyContent: 'center', fontSize: 11 }}
+                  onClick={() => { setEmail(a.email); setPassword('cryotrace123') }}>
+                  {a.label}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {fieldAccounts.map(a => (
                 <button key={a.email} className="btn btn-ghost btn-sm" style={{ flex: 1, justifyContent: 'center', fontSize: 11 }}
                   onClick={() => { setEmail(a.email); setPassword('cryotrace123') }}>
                   {a.label}

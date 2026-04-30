@@ -28,14 +28,14 @@ def detect_anomalies(shipment: Shipment, db: Session) -> List[Dict[str, Any]]:
 
         features = np.array([
             [
-                l.temperature or 0,
-                l.humidity or 50,
-                l.battery or 100,
+                l.temperature if l.temperature is not None else 0.0,
+                l.humidity    if l.humidity    is not None else 50.0,
+                l.battery     if l.battery     is not None else 100.0,
                 int(l.door_open or False),
-                int(l.shock or False),
+                int(l.shock    or False),
             ]
             for l in logs
-        ])
+        ], dtype=float)
 
         iso = IsolationForest(contamination=0.05, random_state=42)
         predictions = iso.fit_predict(features)
@@ -55,19 +55,27 @@ def detect_anomalies(shipment: Shipment, db: Session) -> List[Dict[str, Any]]:
         return anomaly_windows
 
     except ImportError:
-        # Fallback: simple statistical detection
-        temps = [l.temperature for l in logs]
+        # Fallback: simple statistical detection (sklearn not available)
+        # Filter out logs with None temperature before any arithmetic
+        valid = [(i, l) for i, l in enumerate(logs) if l.temperature is not None]
+        if len(valid) < 2:
+            return []
+        temps = [l.temperature for _, l in valid]
         mean = sum(temps) / len(temps)
         std = (sum((t - mean) ** 2 for t in temps) / len(temps)) ** 0.5
-        threshold = mean + 2 * std
 
         return [
             {
-                "timestamp": logs[i].timestamp.isoformat(),
-                "temperature": logs[i].temperature,
-                "anomaly_score": (temps[i] - mean) / max(std, 0.001),
+                "timestamp": l.timestamp.isoformat(),
+                "temperature": l.temperature,
+                "anomaly_score": (l.temperature - mean) / max(std, 0.001),
                 "index": i,
             }
-            for i, t in enumerate(temps)
-            if abs(t - mean) > 2 * std
+            for i, l in valid
+            if abs(l.temperature - mean) > 2 * std
         ]
+
+    except Exception as exc:  # noqa: BLE001 — never let detection crash the API
+        import logging
+        logging.getLogger(__name__).exception("Anomaly detection failed: %s", exc)
+        return []

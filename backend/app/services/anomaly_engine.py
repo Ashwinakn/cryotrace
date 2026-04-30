@@ -78,6 +78,16 @@ def check_handoff_anomalies(handoff: HandoffRecord, shipment: Shipment, db: Sess
                 description=f"Excessive dwell of {dwell_hours:.1f}h at {handoff.location}",
             ))
 
+    # 6. Unsigned handoff — no actor recorded (chain-of-responsibility break)
+    if not handoff.signed_by:
+        anomalies.append(Anomaly(
+            shipment_id=str(shipment.id), handoff_id=str(handoff.id),
+            anomaly_type=AnomalyType.CHAIN_BREAK.value,
+            severity=AnomalySeverity.HIGH.value,
+            description=f"Handoff at {handoff.location} has no recorded signer — "
+                        f"the party who accepted this transfer is unknown.",
+        ))
+
     return anomalies
 
 

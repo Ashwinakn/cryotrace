@@ -20,17 +20,20 @@ def predict_shipment_risk(shipment: Shipment, db: Session) -> Dict[str, Any]:
     documents = db.query(DocumentRecord).filter(DocumentRecord.shipment_id == shipment.id).all()
 
     # ── Feature extraction ────────────────────────────────────────────────
-    critical_anomalies = sum(1 for a in anomalies if a.severity == AnomalySeverity.CRITICAL)
-    high_anomalies = sum(1 for a in anomalies if a.severity == AnomalySeverity.HIGH)
+    # Safely resolve severity — DB stores plain strings; enum comparison works via str mixin
+    critical_anomalies = sum(1 for a in anomalies if (a.severity or "") == AnomalySeverity.CRITICAL)
+    high_anomalies = sum(1 for a in anomalies if (a.severity or "") == AnomalySeverity.HIGH)
     tampered_docs = sum(1 for d in documents if d.tampered)
-    missing_docs_ratio = max(0, 1 - len(documents) / max(1, _expected_doc_count(shipment.category.value)))
+    # category is stored as a plain string in the DB (not an enum instance)
+    category_str = shipment.category.value if hasattr(shipment.category, "value") else str(shipment.category or "")
+    missing_docs_ratio = max(0, 1 - len(documents) / max(1, _expected_doc_count(category_str)))
 
     # Temperature analysis
     temp_breaches = 0
     max_temp_deviation = 0
     if sensor_logs and shipment.temp_max_required:
         for log in sensor_logs:
-            if log.temperature > shipment.temp_max_required:
+            if log.temperature is not None and log.temperature > shipment.temp_max_required:
                 temp_breaches += 1
                 max_temp_deviation = max(max_temp_deviation, log.temperature - shipment.temp_max_required)
 
@@ -66,21 +69,21 @@ def predict_shipment_risk(shipment: Shipment, db: Session) -> Dict[str, Any]:
         critical_anomalies * 12 +
         missing_docs_ratio * 50 +
         (20 if transit_days > 30 else 0) +
-        (15 if shipment.status.value == "quarantined" else 0)
+        (15 if str(shipment.status or "") == "quarantined" else 0)
     ))
 
     theft_risk = min(100, (
         door_open_events * 10 +
         shock_events * 5 +
         high_anomalies * 8 +
-        (10 if shipment.unit_value_usd > 100 else 0)
+        (10 if (shipment.unit_value_usd or 0) > 100 else 0)
     ))
 
     customs_delay_risk = min(100, (
         missing_docs_ratio * 60 +
         tampered_docs * 20 +
         critical_anomalies * 8 +
-        (30 if shipment.category.value == "vaccines" else 0)
+        (30 if category_str == "vaccines" else 0)
     ))
 
     overall_risk = min(100, (

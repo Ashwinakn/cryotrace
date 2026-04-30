@@ -197,6 +197,8 @@ class HandoffRecord(Base):
     status = Column(String(50), default="completed")
     notes = Column(Text)
     signature = Column(Text)
+    signed_by = Column(String(255))       # Name of person who physically accepted
+    signer_role = Column(String(50))      # warehouse | driver | customs | system
 
     shipment = relationship("Shipment", back_populates="handoffs")
     documents = relationship("DocumentRecord", back_populates="handoff")

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { PackageCheck, ShieldCheck, Clock, Hash, AlertCircle, CheckCircle2, Thermometer } from 'lucide-react'
+import { PackageCheck, ShieldCheck, Clock, Hash, AlertCircle, CheckCircle2, Thermometer, ClipboardList } from 'lucide-react'
 import { shipmentsApi, handoffsApi, analyticsApi } from '../../api'
 
 export default function HubDashboard() {
@@ -81,9 +81,20 @@ export default function HubDashboard() {
                     </div>
                   )}
                 </div>
-                <button className="btn btn-primary btn-sm" onClick={() => handleVerify(s.id)}>
-                  Verify
-                </button>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    style={{ fontSize: 11, padding: '4px 8px', color: '#7c3aed', borderColor: '#e9d5ff' }}
+                    onClick={() => navigate(`/field/${s.id}`)}
+                    title="Open field handoff form (for phone use)"
+                  >
+                    <ClipboardList size={12} style={{ marginRight: 4 }} />
+                    Handoff
+                  </button>
+                  <button className="btn btn-primary btn-sm" onClick={() => handleVerify(s.id)}>
+                    Verify
+                  </button>
+                </div>
               </div>
             ))}
           </div>

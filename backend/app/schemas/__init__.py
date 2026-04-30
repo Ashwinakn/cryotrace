@@ -135,6 +135,8 @@ class HandoffCreate(BaseModel):
     humidity: Optional[float] = None
     notes: Optional[str] = None
     signature: Optional[str] = None
+    signed_by: Optional[str] = None      # Name of the person accepting the shipment
+    signer_role: Optional[str] = None   # warehouse | driver | customs | system
 
 
 class HandoffOut(BaseModel):
@@ -154,6 +156,8 @@ class HandoffOut(BaseModel):
     handoff_hash: Optional[str]
     status: str
     notes: Optional[str]
+    signed_by: Optional[str] = None
+    signer_role: Optional[str] = None
     class Config: from_attributes = True
 
 
