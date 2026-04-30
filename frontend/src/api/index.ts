@@ -70,6 +70,7 @@ export const analyticsApi = {
   byCategory: () => api.get('/analytics/shipments-by-category'),
   monthlyStats: () => api.get('/analytics/monthly-stats'),
   tempExcursions: (days?: number) => api.get('/analytics/temperature-excursions', { params: { days } }),
+  esgSummary: () => api.get('/analytics/esg/summary'),
   esg: (shipmentId: string) => api.get(`/analytics/esg/${shipmentId}`),
 }
 
@@ -86,4 +87,14 @@ export const adminApi = {
   stats: () => api.get('/admin/system-stats'),
 }
 
+// ── Claims ────────────────────────────────────────────────────────────────
+export const claimsApi = {
+  list: (params?: any) => api.get('/claims', { params }),
+  get: (id: string) => api.get(`/claims/${id}`),
+  create: (d: any) => api.post('/claims', d),
+  update: (id: string, d: any) => api.patch(`/claims/${id}`, d),
+  stats: () => api.get('/claims/stats/summary'),
+}
+
 export default api
+

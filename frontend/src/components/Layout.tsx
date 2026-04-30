@@ -1,5 +1,7 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useEffect, useState } from 'react'
+import { aiApi } from '../api'
 import {
   LayoutDashboard, Package, BarChart3, Leaf, FileText,
   ShieldCheck, Settings, LogOut, Bell, Search, Zap
@@ -17,13 +19,25 @@ const navItems = [
 export default function Layout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const [alertCount, setAlertCount] = useState(0)
+
+  useEffect(() => {
+    const fetchAlerts = () => {
+      aiApi.anomalies({ resolved: false, limit: 100 })
+        .then(r => setAlertCount(r.data.length))
+        .catch(() => {})
+    }
+    fetchAlerts()
+    const interval = setInterval(fetchAlerts, 30000) // refresh every 30s
+    return () => clearInterval(interval)
+  }, [])
 
   return (
     <div className="app-layout">
       <aside className="sidebar">
         <div className="sidebar-logo">
           <div className="logo-mark">
-            <div className="logo-icon">❄️</div>
+            <div className="logo-icon"><Zap size={18} fill="#fff" /></div>
             <div>
               <div className="logo-text">CryoTrace</div>
               <div className="logo-sub">Cold Chain Intelligence</div>
@@ -78,7 +92,7 @@ export default function Layout() {
           </div>
           <button className="btn btn-ghost btn-sm" onClick={() => navigate('/shipments?status=flagged')}>
             <Bell size={14} /> Alerts
-            <span className="nav-badge">3</span>
+            {alertCount > 0 && <span className="nav-badge">{alertCount > 99 ? '99+' : alertCount}</span>}
           </button>
           <button className="btn btn-primary btn-sm" onClick={() => navigate('/shipments')}>
             + New Shipment
@@ -92,3 +106,4 @@ export default function Layout() {
     </div>
   )
 }
+

@@ -1,93 +1,156 @@
 import { useState, useEffect } from 'react'
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
-import 'leaflet/dist/leaflet.css'
-import { ShieldCheck, Hash, Clock, PackageCheck } from 'lucide-react'
-import { shipmentsApi } from '../../api'
+import { useNavigate } from 'react-router-dom'
+import { PackageCheck, ShieldCheck, Clock, Hash, AlertCircle, CheckCircle2, Thermometer } from 'lucide-react'
+import { shipmentsApi, handoffsApi, analyticsApi } from '../../api'
 
 export default function HubDashboard() {
   const [shipments, setShipments] = useState<any[]>([])
+  const [pendingVerify, setPendingVerify] = useState<any[]>([])
+  const [stats, setStats] = useState<any>(null)
+  const [tempData, setTempData] = useState<any[]>([])
+  const navigate = useNavigate()
 
   useEffect(() => {
-    shipmentsApi.list().then(res => setShipments(res.data)).catch(() => {})
+    shipmentsApi.list({ status: 'in_transit' }).then(r => {
+      setShipments(r.data)
+      setPendingVerify(r.data.slice(0, 5))
+    }).catch(() => {})
+    analyticsApi.dashboard().then(r => setStats(r.data)).catch(() => {})
+    analyticsApi.tempExcursions(7).then(r => setTempData(r.data)).catch(() => {})
   }, [])
 
+  const handleVerify = (shipmentId: string) => {
+    navigate(`/shipments/${shipmentId}`)
+  }
+
   return (
-    <div className="dashboard-layout">
+    <div>
       <div className="page-header">
         <div className="page-header-left">
           <h1>Distributor Hub Dashboard</h1>
-          <p>Scan shipments, verify documents, and check temperature logs</p>
+          <p>Verify incoming shipments, check temperature compliance, and record handoffs</p>
         </div>
-        <div className="flex gap-4">
-          <button className="btn btn-primary" onClick={() => alert('Scanner Open')}>📷 Scan Package QR</button>
-        </div>
+        <button className="btn btn-primary" onClick={() => navigate('/shipments')}>
+          View All Shipments
+        </button>
       </div>
 
-      <div className="grid-2">
-        <div className="flex flex-col gap-4">
-          <div className="card">
-            <div className="card-header"><span className="card-title">Pending Arrivals & Verification</span></div>
-            <div className="card-body">
-              {shipments.slice(0, 4).map(s => (
-                <div key={s.id} className="flex gap-4 align-center p-3 border-b border-gray-200">
-                  <PackageCheck size={24} className="text-purple-500" />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600 }}>{s.name}</div>
-                    <div style={{ fontSize: 12, color: '#64748b' }}><Hash size={12} className="inline mr-1" />{s.id.split('-')[0]}...</div>
+      {/* KPI strip */}
+      {stats && (
+        <div className="stat-grid" style={{ marginBottom: 20 }}>
+          {[
+            { label: 'In Transit', value: stats.in_transit, icon: PackageCheck, color: 'blue', sub: 'Awaiting arrival' },
+            { label: 'Delivered Today', value: stats.delivered, icon: CheckCircle2, color: 'green', sub: 'Completed' },
+            { label: 'Flagged', value: stats.flagged, icon: AlertCircle, color: 'red', sub: 'Require action' },
+            { label: 'Active Sensors', value: stats.active_sensors, icon: Thermometer, color: 'purple', sub: 'Live feeds' },
+          ].map(({ label, value, icon: Icon, color, sub }) => (
+            <div key={label} className={`stat-card ${color}`}>
+              <div className="stat-label">{label}</div>
+              <div className="stat-value">{value}</div>
+              <div className="stat-sub">{sub}</div>
+              <Icon size={38} className="stat-icon" />
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="grid-2" style={{ marginBottom: 20 }}>
+        {/* Pending verification queue */}
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title">Pending Verification Queue</span>
+            <span style={{ fontSize: 12, color: '#94a3b8' }}>{pendingVerify.length} in transit</span>
+          </div>
+          <div className="card-body" style={{ padding: 0 }}>
+            {pendingVerify.length === 0 ? (
+              <div className="empty-state" style={{ padding: 40 }}>
+                <p>No shipments pending verification</p>
+              </div>
+            ) : pendingVerify.map(s => (
+              <div key={s.id} style={{ padding: '12px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <PackageCheck size={20} color="#7c3aed" style={{ flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', display: 'flex', gap: 8, marginTop: 2 }}>
+                    <span><Hash size={10} className="inline" /> {s.id.split('-')[0]}…</span>
+                    <span>{s.origin.split(',')[0]} {' -> '} {s.destination.split(',')[0]}</span>
                   </div>
-                  <button className="btn btn-sm btn-outline">Verify Hash & Docs</button>
+                  {s.temp_min_required != null && (
+                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                      Required: {s.temp_min_required}°C – {s.temp_max_required}°C
+                    </div>
+                  )}
+                </div>
+                <button className="btn btn-primary btn-sm" onClick={() => handleVerify(s.id)}>
+                  Verify
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Compliance summary */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="card">
+            <div className="card-header"><span className="card-title">Tamper & Document Status</span></div>
+            <div className="card-body">
+              {stats && [
+                { label: 'Verified Documents', value: stats.verified_docs, icon: ShieldCheck, ok: true },
+                { label: 'Blockchain Records', value: stats.blockchain_verified, icon: Hash, ok: true },
+                { label: 'Unresolved Anomalies', value: stats.unresolved_anomalies, icon: AlertCircle, ok: stats.unresolved_anomalies === 0 },
+              ].map(({ label, value, icon: Icon, ok }) => (
+                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #f1f5f9' }}>
+                  <Icon size={18} color={ok ? '#16a34a' : '#dc2626'} />
+                  <span style={{ fontSize: 13, flex: 1, color: '#475569' }}>{label}</span>
+                  <span style={{ fontWeight: 700, fontSize: 14, color: ok ? '#16a34a' : '#dc2626' }}>{value}</span>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="grid-2 gap-4">
-            <div className="card">
-              <div className="card-header"><span className="card-title">Tamper Checks</span></div>
-              <div className="card-body flex-center flex-col text-center">
-                <ShieldCheck size={48} className="text-green-500 mb-2" />
-                <div style={{ fontWeight: 600 }}>All Clear</div>
-                <div style={{ fontSize: 12, color: '#64748b' }}>No physical tampering detected in the last 24 hours.</div>
+          <div className="card">
+            <div className="card-header"><span className="card-title">Hub Operations</span></div>
+            <div className="card-body">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #f1f5f9' }}>
+                <Clock size={18} color="#2563eb" />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>Auto-Timestamp Sync</div>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>IoT sensor timestamps are auto-recorded on package arrival</div>
+                </div>
+                <span className="badge badge-green"><span className="badge-dot" />Live</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0' }}>
+                <Thermometer size={18} color="#7c3aed" />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>Temperature Logging</div>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>Continuous monitoring with automatic anomaly detection</div>
+                </div>
+                <span className="badge badge-green"><span className="badge-dot" />Active</span>
               </div>
             </div>
-
-            <div className="card">
-              <div className="card-header"><span className="card-title">Temperature In/Out</span></div>
-              <div className="card-body flex-center flex-col text-center">
-                <Clock size={48} className="text-blue-500 mb-2" />
-                <div style={{ fontWeight: 600 }}>Auto-Synced</div>
-                <div style={{ fontSize: 12, color: '#64748b' }}>Timestamps and Temp logs are auto-fetched from IoT tags at handoff.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="card-header">
-            <span className="card-title">Hub Locations & Incoming Shipments</span>
-          </div>
-          <div className="card-body" style={{ padding: 0, height: 400 }}>
-            <MapContainer center={[20, 0]} zoom={2} style={{ height: '100%', width: '100%', borderRadius: '0 0 8px 8px' }}>
-              <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
-              {shipments.map(s => {
-                const logs = s.sensor_logs || [];
-                const lastLog = logs[logs.length - 1];
-                if (lastLog && lastLog.lat && lastLog.lng) {
-                  return (
-                    <Marker key={s.id} position={[lastLog.lat, lastLog.lng]}>
-                      <Popup>
-                        <strong>{s.name}</strong><br/>
-                        Incoming to Hub
-                      </Popup>
-                    </Marker>
-                  )
-                }
-                return null;
-              })}
-            </MapContainer>
           </div>
         </div>
       </div>
+
+      {/* Temperature excursion summary */}
+      {tempData.length > 0 && (
+        <div className="card">
+          <div className="card-header"><span className="card-title">Temperature Log (Last 7 Days)</span></div>
+          <div className="card-body">
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              {tempData.map((d: any) => (
+                <div key={d.date} style={{ flex: 1, minWidth: 100, padding: 12, background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0', textAlign: 'center' }}>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>{d.date}</div>
+                  <div style={{ fontWeight: 700, fontSize: 16, color: d.max_temp > 8 ? '#dc2626' : '#16a34a' }}>{d.max_temp.toFixed(1)}°</div>
+                  <div style={{ fontSize: 10, color: '#64748b' }}>max</div>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: '#475569' }}>{d.avg_temp.toFixed(1)}°</div>
+                  <div style={{ fontSize: 10, color: '#94a3b8' }}>avg</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

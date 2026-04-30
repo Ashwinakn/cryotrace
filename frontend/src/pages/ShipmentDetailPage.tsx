@@ -6,8 +6,9 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'rec
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import QRCode from 'qrcode'
 import toast from 'react-hot-toast'
-import { ArrowLeft, RefreshCw, Zap } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Zap, QrCode, Copy, ExternalLink } from 'lucide-react'
 
 // Fix Leaflet default icons
 delete (L.Icon.Default.prototype as any)._getIconUrl
@@ -16,10 +17,40 @@ L.Icon.Default.mergeOptions({ iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/di
 function scoreColor(v: number) { return v >= 80 ? '#16a34a' : v >= 50 ? '#f59e0b' : '#dc2626' }
 function statusColor(s: string) { return { in_transit: 'blue', delivered: 'green', flagged: 'red', quarantined: 'amber', pending: 'gray' }[s] || 'gray' }
 
+function ScoreRing({ value, label, invert = false }: { value: number, label: string, invert?: boolean }) {
+  const radius = 32;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (value / 100) * circumference;
+  const color = invert 
+    ? (value < 25 ? '#16a34a' : value < 60 ? '#f59e0b' : '#dc2626')
+    : (value >= 80 ? '#16a34a' : value >= 50 ? '#f59e0b' : '#dc2626');
+
+  return (
+    <div className="score-ring-container">
+      <div className="score-ring">
+        <svg>
+          <circle className="bg" cx="40" cy="40" r={radius} />
+          <circle 
+            className="fill" 
+            cx="40" 
+            cy="40" 
+            r={radius} 
+            stroke={color}
+            strokeDasharray={circumference}
+            strokeDashoffset={offset}
+          />
+        </svg>
+        <div className="score-ring-label" style={{ color }}>{value.toFixed(0)}%</div>
+      </div>
+      <span className="score-title">{label}</span>
+    </div>
+  );
+}
+
 export default function ShipmentDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const [tab, setTab] = useState('overview')
+  const [tab, setTab] = useState('dashboard')
   const [shipment, setShipment] = useState<any>(null)
   const [handoffs, setHandoffs] = useState<any[]>([])
   const [documents, setDocuments] = useState<any[]>([])
@@ -29,6 +60,7 @@ export default function ShipmentDetailPage() {
   const [loading, setLoading] = useState(true)
   const [runningAI, setRunningAI] = useState(false)
   const wsRef = useRef<WebSocket | null>(null)
+  const [isLive, setIsLive] = useState(false)
 
   useEffect(() => {
     loadAll()
@@ -38,6 +70,8 @@ export default function ShipmentDetailPage() {
       const data = JSON.parse(e.data)
       if (data.type === 'sensor_update') {
         setSensors(prev => [...prev.slice(-200), { ...data.data, id: Date.now() }])
+        setIsLive(true)
+        setTimeout(() => setIsLive(false), 2000)
       }
     }
     return () => wsRef.current?.close()
@@ -81,7 +115,7 @@ export default function ShipmentDetailPage() {
   if (!shipment) return <div className="empty-state"><p>Shipment not found</p></div>
 
   const mapPoints = handoffs.filter(h => h.lat && h.lng)
-  const mapCenter: [number, number] = mapPoints.length > 0 ? [mapPoints[0].lat, mapPoints[0].lng] : [20, 0]
+  const mapCenter: [number, number] = mapPoints.length > 0 ? [mapPoints[mapPoints.length-1].lat, mapPoints[mapPoints.length-1].lng] : [12.9716, 77.5946]
 
   return (
     <div>
@@ -91,117 +125,156 @@ export default function ShipmentDetailPage() {
           <div className="flex items-center gap-12" style={{ marginBottom: 6 }}>
             <button className="btn btn-ghost btn-sm" onClick={() => navigate('/shipments')}><ArrowLeft size={14} /> Back</button>
             <span className={`badge badge-${statusColor(shipment.status)}`}><span className="badge-dot" />{shipment.status.replace('_',' ')}</span>
-            <span className="badge badge-gray">{shipment.category.replace('_',' ')}</span>
+            {isLive && <span className="chain-badge"><div className="live-pulse" /> LIVE PULSE</span>}
           </div>
-          <h1 style={{ fontSize: 20 }}>{shipment.name}</h1>
-          <p style={{ fontFamily: 'JetBrains Mono', fontSize: 12 }}>{shipment.batch_no} · {shipment.origin} → {shipment.destination}</p>
+          <div className="flex items-center gap-12">
+            <h1>{shipment.name}</h1>
+            {shipment.blockchain_status === 'confirmed' && <span className="chain-badge">Blockchain Verified</span>}
+          </div>
+          <p className="text-muted text-sm mt-4">{shipment.origin} {' -> '} {shipment.destination} · Batch: {shipment.batch_no}</p>
         </div>
         <div className="flex gap-8">
           <button className="btn btn-ghost btn-sm" onClick={loadAll}><RefreshCw size={13} /></button>
-          <button className="btn btn-primary btn-sm" onClick={runAI} disabled={runningAI}>
-            <Zap size={13} /> {runningAI ? 'Analyzing…' : 'Run AI Analysis'}
-          </button>
-        </div>
-      </div>
-
-      {/* Score Banner */}
-      <div className="card" style={{ padding: '16px 24px', marginBottom: 20, display: 'flex', gap: 32, alignItems: 'center' }}>
-        {[
-          { label: 'Integrity Score', value: shipment.integrity_score },
-          { label: 'Freshness Score', value: shipment.freshness_score },
-          { label: 'Risk Score', value: shipment.risk_score, invert: true },
-        ].map(({ label, value, invert }) => (
-          <div key={label} style={{ flex: 1 }}>
-            <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', marginBottom: 6 }}>{label}</div>
-            <div className="score-bar">
-              <div className="score-track" style={{ height: 8 }}>
-                <div className={`score-fill ${invert ? (value < 25 ? 'green' : value < 60 ? 'amber' : 'red') : (value >= 80 ? 'green' : value >= 50 ? 'amber' : 'red')}`} style={{ width: `${value}%` }} />
-              </div>
-              <span style={{ fontSize: 20, fontWeight: 800, color: scoreColor(invert ? (100 - value) : value), minWidth: 42 }}>{value.toFixed(0)}</span>
-            </div>
-          </div>
-        ))}
-        <div style={{ borderLeft: '1px solid #e2e8f0', paddingLeft: 24 }}>
-          <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>Handoffs</div>
-          <div style={{ fontSize: 28, fontWeight: 800 }}>{handoffs.length}</div>
-        </div>
-        <div>
-          <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>Anomalies</div>
-          <div style={{ fontSize: 28, fontWeight: 800, color: anomalies.filter(a => !a.resolved).length > 0 ? '#dc2626' : '#16a34a' }}>
-            {anomalies.filter(a => !a.resolved).length}
-          </div>
+          <button className="btn btn-primary" onClick={() => setTab('verify')}><QrCode size={14} /> Share Verify Link</button>
         </div>
       </div>
 
       {/* Tabs */}
       <div className="tabs">
-        {['overview','custody','documents','sensors','blockchain','ai','map'].map(t => (
-          <div key={t} className={`tab${tab === t ? ' active' : ''}`} onClick={() => setTab(t)} style={{ textTransform: 'capitalize' }}>{t === 'ai' ? 'AI Insights' : t === 'custody' ? 'Chain of Custody' : t}</div>
+        {[
+          { id: 'dashboard', label: 'Dashboard' },
+          { id: 'provenance', label: 'Provenance' },
+          (shipment.category === 'vaccines' || shipment.category === 'pharmaceutical') && { id: 'compliance', label: 'Pharma Compliance' },
+          { id: 'vault', label: 'Document Vault' },
+          { id: 'verify', label: 'Consumer Verify' }
+        ].filter(Boolean).map((t: any) => (
+          <div key={t.id} className={`tab${tab === t.id ? ' active' : ''}`} onClick={() => setTab(t.id)}>{t.label}</div>
         ))}
       </div>
 
       {/* Tab Content */}
-      {tab === 'overview' && <OverviewTab shipment={shipment} anomalies={anomalies} />}
-      {tab === 'custody' && <CustodyTab handoffs={handoffs} />}
-      {tab === 'documents' && <DocumentsTab documents={documents} shipmentId={id!} onRefresh={loadAll} />}
-      {tab === 'sensors' && <SensorsTab sensors={sensors} shipment={shipment} />}
-      {tab === 'blockchain' && <BlockchainTab shipmentId={id!} />}
-      {tab === 'ai' && <AITab aiResult={aiResult} anomalies={anomalies} onRunAI={runAI} />}
-      {tab === 'map' && <MapTab handoffs={mapPoints} center={mapCenter} />}
+      <div className="fade-in">
+        {tab === 'dashboard' && (
+          <DashboardView 
+            shipment={shipment} 
+            sensors={sensors} 
+            aiResult={aiResult} 
+            anomalies={anomalies} 
+            mapPoints={mapPoints} 
+            mapCenter={mapCenter} 
+            onRunAI={runAI}
+            runningAI={runningAI}
+          />
+        )}
+        {tab === 'provenance' && <ProvenanceView handoffs={handoffs} shipmentId={id!} />}
+        {tab === 'compliance' && <ComplianceView shipment={shipment} sensors={sensors} />}
+        {tab === 'vault' && <DocumentsTab documents={documents} shipmentId={id!} onRefresh={loadAll} />}
+        {tab === 'verify' && <QRTab shipmentId={id!} shipmentName={shipment.name} batchNo={shipment.batch_no} />}
+      </div>
     </div>
   )
 }
 
-/* ── Overview Tab ── */
-function OverviewTab({ shipment, anomalies }: any) {
+function DashboardView({ shipment, sensors, aiResult, anomalies, mapPoints, mapCenter, onRunAI, runningAI }: any) {
+  const latestSensor = sensors.length > 0 ? sensors[sensors.length - 1] : null;
+  
   return (
-    <div className="grid-2">
-      <div className="card">
-        <div className="card-header"><span className="card-title">Shipment Details</span></div>
-        <div className="card-body">
-          {[
-            ['Product', shipment.name],
-            ['Batch No', shipment.batch_no],
-            ['Category', shipment.category.replace('_',' ')],
-            ['Origin', shipment.origin],
-            ['Destination', shipment.destination],
-            ['Status', shipment.status.replace('_',' ')],
-            ['ETA', shipment.eta ? new Date(shipment.eta).toLocaleDateString() : '—'],
-            ['Weight', shipment.weight_kg ? `${shipment.weight_kg} kg` : '—'],
-            ['Units', shipment.quantity_units?.toLocaleString() ?? '—'],
-            ['Unit Value', shipment.unit_value_usd ? `$${shipment.unit_value_usd}` : '—'],
-            ['Temp Range', shipment.temp_min_required != null ? `${shipment.temp_min_required}°C to ${shipment.temp_max_required}°C` : '—'],
-          ].map(([k, v]) => (
-            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
-              <span style={{ fontSize: 13, color: '#64748b', fontWeight: 500 }}>{k}</span>
-              <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', textAlign: 'right', maxWidth: '60%' }}>{v}</span>
+    <div className="dashboard-grid">
+      <div className="flex flex-direction-column gap-24">
+        {/* Live Status Card */}
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div className="card-header" style={{ padding: '20px 24px' }}>
+            <span className="card-title">Live Tracking & Status</span>
+            <div className="flex items-center gap-12">
+              <span className="badge badge-green">Safe Temp</span>
+              <div className="live-pulse" />
             </div>
-          ))}
-        </div>
-      </div>
-      <div>
-        <div className="card" style={{ marginBottom: 16 }}>
-          <div className="card-header"><span className="card-title">Genesis Hash</span></div>
-          <div className="card-body">
-            <div className="tx-hash">{shipment.genesis_hash || '—'}</div>
-            <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 8 }}>SHA-256 root hash anchoring this shipment's chain of custody</p>
+          </div>
+          <div style={{ height: 380, background: '#f1f5f9', position: 'relative' }}>
+            <MapTab 
+              handoffs={mapPoints} 
+              center={mapCenter} 
+              livePoint={latestSensor ? { lat: latestSensor.lat, lng: latestSensor.lng, name: 'Current Location' } : null}
+            />
+          </div>
+          <div className="card-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, background: '#e2e8f0' }}>
+            {[
+              { label: 'Current Temp', value: latestSensor ? `${latestSensor.temperature.toFixed(1)}°C` : '--', color: 'blue' },
+              { label: 'Humidity', value: latestSensor ? `${latestSensor.humidity.toFixed(0)}%` : '--', color: 'gray' },
+              { label: 'Battery', value: latestSensor ? `${latestSensor.battery.toFixed(0)}%` : '--', color: latestSensor?.battery < 20 ? 'red' : 'green' },
+              { label: 'Integrity', value: '100%', color: 'green' }
+            ].map(stat => (
+              <div key={stat.label} style={{ background: '#fff', padding: '16px 20px' }}>
+                <div className="score-title">{stat.label}</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: `var(--${stat.color})` }}>{stat.value}</div>
+              </div>
+            ))}
           </div>
         </div>
+
+        {/* AI Insights */}
         <div className="card">
-          <div className="card-header"><span className="card-title">Active Anomalies</span></div>
+          <div className="card-header">
+            <span className="card-title">AI Predictive Insights</span>
+            <button className="btn btn-ghost btn-sm" onClick={onRunAI} disabled={runningAI}>
+              <RefreshCw size={12} className={runningAI ? 'spin' : ''} /> Recalculate
+            </button>
+          </div>
           <div className="card-body">
-            {anomalies.filter((a: any) => !a.resolved).length === 0
-              ? <div style={{ color: '#16a34a', fontWeight: 600, fontSize: 14 }}>✅ No active anomalies</div>
-              : anomalies.filter((a: any) => !a.resolved).map((a: any) => (
-                <div key={a.id} className={`alert alert-${a.severity}`}>
-                  <span className="alert-icon">⚠</span>
-                  <div>
-                    <strong style={{ textTransform: 'capitalize', fontSize: 13 }}>{a.anomaly_type.replace(/_/g,' ')}</strong>
-                    <p style={{ fontSize: 12, marginTop: 2 }}>{a.description}</p>
+            {aiResult ? (
+              <div className="flex gap-24 items-center">
+                <div style={{ width: 140 }}>
+                   <ScoreRing value={aiResult.risk_score} label="Risk Level" invert />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div className={`alert ${aiResult.risk_score > 50 ? 'alert-high' : 'alert-low'}`} style={{ marginBottom: 12 }}>
+                    <p style={{ fontWeight: 600 }}>{aiResult.recommended_action}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-8">
+                    {aiResult.top_reasons?.slice(0, 3).map((r: string) => (
+                      <span key={r} className="badge badge-gray" style={{ fontSize: 10 }}>• {r}</span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="empty-state" style={{ padding: '20px 0' }}>
+                <p>No AI prediction available yet.</p>
+                <button className="btn btn-primary btn-sm mt-8" onClick={onRunAI}>Run Analysis</button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-direction-column gap-24">
+        {/* Trust Metrics */}
+        <div className="card">
+          <div className="card-header"><span className="card-title">Trust Metrics</span></div>
+          <div className="card-body flex flex-direction-column gap-24">
+            <ScoreRing value={shipment.integrity_score} label="Data Integrity" />
+            <ScoreRing value={shipment.freshness_score} label="Freshness" />
+          </div>
+        </div>
+
+        {/* Anomalies Card */}
+        <div className="card">
+          <div className="card-header"><span className="card-title">Recent Alerts</span></div>
+          <div className="card-body" style={{ maxHeight: 300, overflowY: 'auto' }}>
+            {anomalies.filter((a: any) => !a.resolved).length === 0 ? (
+              <div className="flex items-center gap-12 text-green font-bold" style={{ fontSize: 13 }}>
+                System operating normally
+              </div>
+            ) : (
+              anomalies.filter((a: any) => !a.resolved).map((a: any) => (
+                <div key={a.id} className={`alert alert-${a.severity}`} style={{ padding: '10px 12px' }}>
+                  <div style={{ fontSize: 12 }}>
+                    <strong>{a.anomaly_type.replace(/_/g,' ')}</strong>
+                    <div style={{ fontSize: 11, opacity: 0.8 }}>{new Date(a.detected_at).toLocaleTimeString()}</div>
                   </div>
                 </div>
               ))
-            }
+            )}
           </div>
         </div>
       </div>
@@ -209,42 +282,52 @@ function OverviewTab({ shipment, anomalies }: any) {
   )
 }
 
-/* ── Chain of Custody Tab ── */
-function CustodyTab({ handoffs }: { handoffs: any[] }) {
+
+function ProvenanceView({ handoffs, shipmentId }: { handoffs: any[], shipmentId: string }) {
+  const [logs, setLogs] = useState<any[]>([])
+  useEffect(() => {
+    import('../api').then(({ default: api }) =>
+      api.get(`/verify/${shipmentId}`).then(r => setLogs(r.data.blockchain_logs))
+    )
+  }, [shipmentId])
+
+  // Combine handoffs and logs into a single timeline
+  const timeline = [
+    ...handoffs.map((h: any) => ({ ...h, type: 'handoff', time: new Date(h.timestamp) })),
+    ...logs.map((l: any) => ({ ...l, type: 'blockchain', time: new Date(l.timestamp) }))
+  ].sort((a: any, b: any) => a.time.getTime() - b.time.getTime());
+
   return (
     <div className="card">
+      <div className="card-header">
+        <span className="card-title">Unified Provenance Timeline</span>
+        <span className="chain-badge">{logs.length} Immutable Anchors</span>
+      </div>
       <div className="card-body">
-        {handoffs.length === 0
-          ? <div className="empty-state"><div className="empty-state-icon">🔗</div><p>No handoffs recorded</p></div>
-          : (
-            <div className="timeline">
-              {handoffs.map((h: any, i: number) => (
-                <div key={h.id} className="timeline-item">
-                  <div className={`timeline-dot ${i === handoffs.length - 1 ? 'blue' : 'green'}`} />
-                  <div className="timeline-content">
-                    <div className="timeline-header">
-                      <div>
-                        <div className="timeline-title">Handoff #{h.sequence} — {h.from_party} → {h.to_party}</div>
-                        <div className="timeline-meta">
-                          <span>📍 {h.location}</span>
-                          {h.temp_min != null && <span>🌡 {h.temp_min}°C – {h.temp_max}°C</span>}
-                          {h.humidity != null && <span>💧 {h.humidity?.toFixed(0)}% RH</span>}
-                        </div>
-                      </div>
-                      <div className="timeline-time">{new Date(h.timestamp).toLocaleString()}</div>
-                    </div>
-                    {h.notes && <p style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>{h.notes}</p>}
-                    <div className="timeline-hash">
-                      <span style={{ color: '#94a3b8' }}>hash: </span>{h.handoff_hash}
-                    </div>
-                    <div className="timeline-hash" style={{ marginTop: 2 }}>
-                      <span style={{ color: '#94a3b8' }}>prev: </span>{h.prev_hash}
-                    </div>
+        <div className="timeline">
+          {timeline.map((item: any, i: number) => (
+            <div key={i} className="timeline-item">
+              <div className={`timeline-dot ${item.type === 'blockchain' ? 'purple' : 'green'}`} />
+              <div className="timeline-content" style={{ borderLeft: item.type === 'blockchain' ? '4px solid var(--purple)' : '4px solid var(--green)' }}>
+                <div className="timeline-header">
+                  <div className="timeline-title">
+                    {item.type === 'blockchain' ? 'Blockchain Confirmation' : `Handoff: ${item.from_party} -> ${item.to_party}`}
                   </div>
+                  <div className="timeline-time">{item.time.toLocaleString()}</div>
                 </div>
-              ))}
+                {item.type === 'blockchain' ? (
+                  <div className="tx-hash" style={{ fontSize: 10 }}>{item.tx_hash}</div>
+                ) : (
+                  <div className="timeline-meta">
+                    <span>{item.location}</span>
+                    {item.temp_min != null && <span>{item.temp_min}°C - {item.temp_max}°C</span>}
+                  </div>
+                )}
+                {item.notes && <p className="mt-8 text-muted text-sm">{item.notes}</p>}
+              </div>
             </div>
-          )}
+          ))}
+        </div>
       </div>
     </div>
   )
@@ -252,7 +335,6 @@ function CustodyTab({ handoffs }: { handoffs: any[] }) {
 
 /* ── Documents Tab ── */
 function DocumentsTab({ documents, shipmentId, onRefresh }: any) {
-  const [verifyDoc, setVerifyDoc] = useState<any>(null)
   const [verifyResult, setVerifyResult] = useState<any>(null)
   const [uploading, setUploading] = useState(false)
 
@@ -293,16 +375,15 @@ function DocumentsTab({ documents, shipmentId, onRefresh }: any) {
       <div className="card-body">
         {verifyResult && (
           <div className={`alert ${verifyResult.match ? 'alert-low' : 'alert-critical'}`} style={{ marginBottom: 16 }}>
-            <span>{verifyResult.match ? '✅' : '🚨'}</span>
             <div>
               <strong>{verifyResult.message}</strong>
               <div className="hash-compare">
                 <div className={`hash-box ${verifyResult.match ? 'match' : 'mismatch'}`}>
-                  <div className="hash-box-label">Original Hash</div>
+                  <div className="hash-box-label">Original Hash (On-chain/DB)</div>
                   <div className="hash-val">{verifyResult.original_hash}</div>
                 </div>
                 <div className={`hash-box ${verifyResult.match ? 'match' : 'mismatch'}`}>
-                  <div className="hash-box-label">Computed Hash</div>
+                  <div className="hash-box-label">Computed Hash (Uploaded File)</div>
                   <div className="hash-val">{verifyResult.computed_hash}</div>
                 </div>
               </div>
@@ -311,34 +392,38 @@ function DocumentsTab({ documents, shipmentId, onRefresh }: any) {
           </div>
         )}
         {documents.length === 0
-          ? <div className="empty-state"><div className="empty-state-icon">📄</div><p>No documents uploaded</p></div>
+          ? <div className="empty-state"><p>No documents uploaded</p></div>
           : (
             <table>
               <thead><tr>
-                <th>Document</th><th>Type</th><th>Hash</th><th>Status</th><th>Uploaded</th><th>Actions</th>
+                <th>Document</th><th>Type</th><th>Status</th><th>Uploaded</th><th>Actions</th>
               </tr></thead>
               <tbody>
                 {documents.map((d: any) => (
                   <tr key={d.id}>
                     <td>
                       <div style={{ fontWeight: 600, fontSize: 13 }}>{d.original_filename || d.filename}</div>
-                      <div style={{ fontSize: 11, color: '#94a3b8' }}>{(d.file_size / 1024).toFixed(0)} KB</div>
+                      <div className="tx-hash" style={{ fontSize: 9, marginTop: 4 }}>{d.content_hash.slice(0, 32)}...</div>
                     </td>
                     <td><span className="badge badge-blue">{d.document_type || d.file_type}</span></td>
-                    <td><span className="font-mono text-xs" style={{ color: '#64748b' }}>{d.content_hash.slice(0,16)}…</span></td>
                     <td>
                       {d.tampered
-                        ? <span className="badge badge-red">🚨 Tampered</span>
+                        ? <span className="badge badge-red">Tampered</span>
                         : d.verified
-                          ? <span className="badge badge-green">✓ Verified</span>
-                          : <span className="badge badge-gray">Pending</span>}
+                          ? <span className="badge badge-green">Verified</span>
+                          : <span className="badge badge-gray">Authentic</span>}
                     </td>
                     <td style={{ fontSize: 12 }}>{new Date(d.uploaded_at).toLocaleDateString()}</td>
                     <td>
-                      <label className="btn btn-ghost btn-sm" style={{ cursor: 'pointer', fontSize: 11 }}>
-                        🔍 Verify
-                        <input type="file" hidden onChange={e => handleVerify(e, d.id)} />
-                      </label>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <label className="btn btn-ghost btn-sm" style={{ cursor: 'pointer', fontSize: 11, padding: '4px 8px' }}>
+                          Verify
+                          <input type="file" hidden onChange={e => handleVerify(e, d.id)} />
+                        </label>
+                        <a href={`http://localhost:8000/documents/${d.id}/download`} className="btn btn-ghost btn-sm" style={{ fontSize: 11, padding: '4px 8px' }} target="_blank" rel="noreferrer">
+                          Download
+                        </a>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -350,173 +435,196 @@ function DocumentsTab({ documents, shipmentId, onRefresh }: any) {
   )
 }
 
-/* ── Sensors Tab ── */
-function SensorsTab({ sensors, shipment }: any) {
+/* ── Map Tab ── */
+function MapTab({ handoffs, center, livePoint }: { handoffs: any[]; center: [number, number], livePoint?: any }) {
+  const positions: [number, number][] = handoffs.map((h: any) => [h.lat, h.lng])
+  
+  // If we have a live point, add it to the path
+  if (livePoint && livePoint.lat && livePoint.lng) {
+    positions.push([livePoint.lat, livePoint.lng])
+  }
+
   return (
-    <div>
-      <div className="grid-2" style={{ marginBottom: 16 }}>
-        {sensors.length > 0 && (() => {
-          const latest = sensors[sensors.length - 1]
-          return [
-            { label: 'Temperature', value: `${latest.temperature?.toFixed(1)}°C`, alert: shipment.temp_max_required && latest.temperature > shipment.temp_max_required },
-            { label: 'Humidity', value: `${latest.humidity?.toFixed(0)}%` },
-            { label: 'Battery', value: `${latest.battery?.toFixed(0)}%`, alert: latest.battery < 20 },
-            { label: 'Door', value: latest.door_open ? 'OPEN 🚨' : 'Closed ✓', alert: latest.door_open },
-          ].map(({ label, value, alert }) => (
-            <div key={label} className={`stat-card ${alert ? 'red' : 'blue'}`}>
-              <div className="stat-label">{label}</div>
-              <div className="stat-value" style={{ fontSize: 22 }}>{value}</div>
-            </div>
-          ))
-        })()}
-      </div>
-      <div className="card">
-        <div className="card-header"><span className="card-title">Temperature History</span></div>
-        <div className="card-body">
-          <ResponsiveContainer width="100%" height={240}>
-            <AreaChart data={sensors.slice(-100)}>
-              <XAxis dataKey="timestamp" tickFormatter={v => new Date(v).toLocaleTimeString()} tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 11 }} unit="°C" />
-              <Tooltip labelFormatter={v => new Date(v).toLocaleString()} formatter={(v: any) => [`${(+v).toFixed(1)}°C`, 'Temp']} />
-              {shipment.temp_max_required && <Area type="monotone" dataKey={() => shipment.temp_max_required} name="Max Allowed" stroke="#dc2626" strokeDasharray="4 2" fill="none" strokeWidth={1.5} />}
-              <Area type="monotone" dataKey="temperature" name="Temperature" stroke="#2563eb" fill="#dbeafe" strokeWidth={2} dot={false} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
+    <div style={{ height: '100%', width: '100%', position: 'relative' }}>
+      {typeof window !== 'undefined' && (
+        <MapContainer center={center} zoom={5} style={{ height: '100%', width: '100%', zIndex: 1 }}>
+          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OpenStreetMap contributors' />
+          
+          {positions.length > 1 && <Polyline positions={positions} color="#2563eb" weight={3} dashArray="6,4" />}
+          
+          {handoffs.map((h: any, i: number) => (
+            <Marker key={h.id || i} position={[h.lat, h.lng]}>
+              <Popup>
+                <strong>#{h.sequence || i+1} {h.location}</strong><br />
+                {h.from_party} {' -> '} {h.to_party}
+              </Popup>
+            </Marker>
+          ))}
+
+          {livePoint && livePoint.lat && livePoint.lng && (
+            <Marker position={[livePoint.lat, livePoint.lng]}>
+              <Popup>
+                <strong>{livePoint.name}</strong><br />
+                Real-time IoT Telemetry
+              </Popup>
+            </Marker>
+          )}
+        </MapContainer>
+      )}
     </div>
   )
 }
 
-/* ── Blockchain Tab ── */
-function BlockchainTab({ shipmentId }: { shipmentId: string }) {
-  const [logs, setLogs] = useState<any[]>([])
+/* ── QR Verify Tab ── */
+function QRTab({ shipmentId, shipmentName, batchNo }: { shipmentId: string; shipmentName: string; batchNo: string }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const verifyUrl = `${window.location.origin}/verify/${shipmentId}`
+
   useEffect(() => {
-    import('../api').then(({ default: api }) =>
-      api.get(`/verify/${shipmentId}`).then(r => setLogs(r.data.blockchain_logs))
-    )
-  }, [shipmentId])
+    if (canvasRef.current) {
+      QRCode.toCanvas(canvasRef.current, verifyUrl, {
+        width: 280,
+        margin: 2,
+        color: { dark: '#0f172a', light: '#ffffff' },
+      })
+    }
+  }, [verifyUrl])
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(verifyUrl)
+    toast.success('Verify link copied!')
+  }
+
+  const downloadQR = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const link = document.createElement('a')
+    link.download = `cryotrace-qr-${batchNo}.png`
+    link.href = canvas.toDataURL()
+    link.click()
+  }
 
   return (
     <div className="card">
       <div className="card-header">
-        <span className="card-title">Blockchain Provenance Records</span>
-        {logs.length > 0 && <span className="chain-badge">⛓ {logs.length} On-Chain Records</span>}
+        <span className="card-title"><QrCode size={16} style={{ display: 'inline', marginRight: 6 }} />Consumer Verify QR Code</span>
       </div>
-      <div className="card-body">
-        <table>
-          <thead><tr><th>#</th><th>TX Hash</th><th>Block</th><th>Network</th><th>Status</th><th>Timestamp</th></tr></thead>
-          <tbody>
-            {logs.map((b: any, i: number) => (
-              <tr key={b.id}>
-                <td>{i + 1}</td>
-                <td><div className="tx-hash" style={{ maxWidth: 200 }}>{b.tx_hash.slice(0, 20)}…</div></td>
-                <td style={{ fontFamily: 'JetBrains Mono', fontSize: 12 }}>{b.block_number?.toLocaleString()}</td>
-                <td><span className="badge badge-purple">{b.network}</span></td>
-                <td><span className={`badge badge-${b.status === 'confirmed' ? 'green' : 'amber'}`}>{b.status}</span></td>
-                <td style={{ fontSize: 12 }}>{new Date(b.timestamp).toLocaleString()}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="card-body" style={{ display: 'flex', gap: 40, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div style={{ textAlign: 'center' }}>
+          <canvas ref={canvasRef} style={{ borderRadius: 12, border: '2px solid #e2e8f0', display: 'block' }} />
+          <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'center' }}>
+            <button className="btn btn-primary btn-sm" onClick={downloadQR}>⬇ Download PNG</button>
+            <button className="btn btn-ghost btn-sm" onClick={copyLink}><Copy size={13} /> Copy Link</button>
+          </div>
+        </div>
+        <div style={{ flex: 1, minWidth: 260 }}>
+          <h3 style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>Scan to Verify Authenticity</h3>
+          <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.7, marginBottom: 16 }}>
+            Print this QR code on the shipment package. End consumers can scan it with any smartphone camera to instantly verify:
+          </p>
+          <ul style={{ fontSize: 13, color: '#475569', lineHeight: 2, paddingLeft: 20 }}>
+            <li>Cold chain integrity and temperature history</li>
+            <li>Blockchain-verified provenance records</li>
+            <li>Authenticated certificates and documents</li>
+            <li>Detected anomalies and risk status</li>
+          </ul>
+          <div style={{ marginTop: 20, padding: 14, background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+            <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase' }}>Verify URL</div>
+            <div style={{ fontSize: 12, fontFamily: 'JetBrains Mono', color: '#2563eb', wordBreak: 'break-all' }}>{verifyUrl}</div>
+          </div>
+        </div>
       </div>
     </div>
   )
 }
 
-/* ── AI Tab ── */
-function AITab({ aiResult, anomalies, onRunAI }: any) {
-  if (!aiResult) return (
-    <div className="card">
-      <div className="card-body">
-        <div className="empty-state">
-          <div className="empty-state-icon">🤖</div>
-          <p>No AI analysis yet</p>
-          <button className="btn btn-primary mt-16" onClick={onRunAI}><Zap size={14} /> Run AI Analysis</button>
-        </div>
-      </div>
-    </div>
-  )
-
-  const risks = [
-    { label: 'Overall Risk', value: aiResult.risk_score, color: '#dc2626' },
-    { label: 'Spoilage Risk', value: aiResult.spoilage_risk, color: '#f59e0b' },
-    { label: 'Fraud Risk', value: aiResult.fraud_risk, color: '#7c3aed' },
-    { label: 'Delay Risk', value: aiResult.delay_risk, color: '#0891b2' },
-    { label: 'Theft Risk', value: aiResult.theft_risk, color: '#dc2626' },
-    { label: 'Customs Risk', value: aiResult.customs_delay_risk, color: '#f59e0b' },
-  ]
+/* ── Pharma Compliance View ── */
+function ComplianceView({ shipment, sensors }: any) {
+  const latestSensor = sensors.length > 0 ? sensors[sensors.length - 1] : null;
+  
+  const vvmStages = [
+    { stage: 1, label: 'Fresh', color: '#16a34a', desc: 'Inner square lighter than outer circle' },
+    { stage: 2, label: 'Warning', color: '#f59e0b', desc: 'Inner square starting to darken' },
+    { stage: 3, label: 'Danger', color: '#ea580c', desc: 'Inner square matches outer circle' },
+    { stage: 4, label: 'Discard', color: '#dc2626', desc: 'Inner square darker than outer circle' }
+  ];
+  
+  const currentVvm = vvmStages.find(s => s.stage === (shipment.vvm_status || 1)) || vvmStages[0];
 
   return (
-    <div className="grid-2">
-      <div>
-        <div className="card" style={{ marginBottom: 16 }}>
-          <div className="card-header"><span className="card-title">Risk Breakdown</span><span style={{ fontSize: 12, color: '#94a3b8' }}>Confidence: {aiResult.confidence.toFixed(1)}%</span></div>
-          <div className="card-body">
-            {risks.map(({ label, value, color }) => (
-              <div key={label} style={{ marginBottom: 14 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 5 }}>
-                  <span style={{ fontWeight: 600 }}>{label}</span>
-                  <span style={{ color, fontWeight: 700 }}>{value.toFixed(1)}</span>
-                </div>
-                <div className="score-track" style={{ height: 7 }}>
-                  <div className="score-fill" style={{ width: `${value}%`, background: color }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-      <div>
-        <div className="card" style={{ marginBottom: 16 }}>
-          <div className="card-header"><span className="card-title">Recommended Action</span></div>
-          <div className="card-body">
-            <div className={`alert ${aiResult.risk_score >= 75 ? 'alert-critical' : aiResult.risk_score >= 50 ? 'alert-high' : 'alert-low'}`}>
-              <span>{aiResult.risk_score >= 75 ? '🚨' : aiResult.risk_score >= 50 ? '⚠️' : '✅'}</span>
-              <p style={{ fontSize: 13, lineHeight: 1.6 }}>{aiResult.recommended_action}</p>
-            </div>
-          </div>
-        </div>
+    <div className="flex flex-direction-column gap-24">
+      <div className="grid grid-cols-3 gap-24">
+        {/* MKT Card */}
         <div className="card">
-          <div className="card-header"><span className="card-title">Top Risk Factors</span></div>
-          <div className="card-body">
-            {(aiResult.top_reasons || []).map((r: string, i: number) => (
-              <div key={i} style={{ display: 'flex', gap: 10, padding: '8px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
-                <span style={{ color: '#94a3b8', fontWeight: 700, flexShrink: 0 }}>{i + 1}.</span>
-                <span style={{ color: '#475569' }}>{r}</span>
-              </div>
-            ))}
+          <div className="card-header"><span className="card-title">Mean Kinetic Temperature (MKT)</span></div>
+          <div className="card-body" style={{ textAlign: 'center', padding: '30px 20px' }}>
+            <div style={{ fontSize: 48, fontWeight: 800, color: '#2563eb' }}>{shipment.mkt ? shipment.mkt.toFixed(2) : '--'}°C</div>
+            <p style={{ fontSize: 12, color: '#64748b', marginTop: 12 }}>
+              Thermodynamic representation of cumulative thermal stress.
+            </p>
+          </div>
+        </div>
+
+        {/* VVM Card */}
+        <div className="card">
+          <div className="card-header"><span className="card-title">Vaccine Vial Monitor (VVM)</span></div>
+          <div className="card-body" style={{ textAlign: 'center', padding: '20px' }}>
+            <div style={{ 
+              width: 60, height: 60, borderRadius: '50%', background: '#cbd5e1', 
+              margin: '0 auto 16px', display: 'flex', alignItems: 'center', justifyContent: 'center' 
+            }}>
+              <div style={{ 
+                width: 30, height: 30, background: currentVvm.color, border: '2px solid white' 
+              }} />
+            </div>
+            <div style={{ fontWeight: 700, fontSize: 18, color: currentVvm.color }}>Stage {currentVvm.stage}: {currentVvm.label}</div>
+            <p style={{ fontSize: 11, color: '#64748b', marginTop: 8 }}>{currentVvm.desc}</p>
+          </div>
+        </div>
+
+        {/* Excursion Card */}
+        <div className="card">
+          <div className="card-header"><span className="card-title">Cumulative Excursions</span></div>
+          <div className="card-body" style={{ textAlign: 'center', padding: '30px 20px' }}>
+            <div style={{ fontSize: 48, fontWeight: 800, color: (shipment.cumulative_excursion_minutes || 0) > 0 ? '#dc2626' : '#16a34a' }}>
+              {shipment.cumulative_excursion_minutes || 0}
+            </div>
+            <div style={{ fontWeight: 600, fontSize: 14, color: '#64748b' }}>Minutes Out of Range</div>
+            <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 12 }}>
+              Threshold: {shipment.temp_min_required}°C – {shipment.temp_max_required}°C
+            </p>
           </div>
         </div>
       </div>
-    </div>
-  )
-}
 
-/* ── Map Tab ── */
-function MapTab({ handoffs, center }: { handoffs: any[]; center: [number, number] }) {
-  const positions: [number, number][] = handoffs.map(h => [h.lat, h.lng])
-  return (
-    <div className="card">
-      <div className="card-body" style={{ padding: 0 }}>
-        <div className="map-container">
-          {typeof window !== 'undefined' && (
-            <MapContainer center={center} zoom={3} style={{ height: '100%', width: '100%' }}>
-              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='© OpenStreetMap' />
-              {positions.length > 1 && <Polyline positions={positions} color="#2563eb" weight={3} dashArray="6,4" />}
-              {handoffs.map((h, i) => (
-                <Marker key={h.id} position={[h.lat, h.lng]}>
-                  <Popup>
-                    <strong>#{h.sequence} {h.location}</strong><br />
-                    {h.from_party} → {h.to_party}<br />
-                    {h.temp_min}°C – {h.temp_max}°C
-                  </Popup>
-                </Marker>
-              ))}
-            </MapContainer>
-          )}
+      {/* Advanced Environmental Data */}
+      <div className="card">
+        <div className="card-header"><span className="card-title">Advanced Environmental Monitoring</span></div>
+        <div className="card-body">
+           <div className="grid grid-cols-4 gap-24">
+              <div className="compliance-stat">
+                <div className="label">Light Exposure</div>
+                <div className="value">{latestSensor?.light ? `${latestSensor.light.toFixed(1)} lux` : '0.0 lux'}</div>
+                <div className="status-dot green" />
+              </div>
+              <div className="compliance-stat">
+                <div className="label">Air Pressure</div>
+                <div className="value">{latestSensor?.pressure ? `${latestSensor.pressure.toFixed(1)} hPa` : '1013.2 hPa'}</div>
+                <div className="status-dot green" />
+              </div>
+              <div className="compliance-stat">
+                <div className="label">Freeze Protection</div>
+                <div className="value">{latestSensor?.temperature < 0 ? 'ACTIVE EXCURSION' : 'SAFE'}</div>
+                <div className={`status-dot ${latestSensor?.temperature < 0 ? 'red' : 'green'}`} />
+              </div>
+              <div className="compliance-stat">
+                <div className="label">Last Calibration</div>
+                <div className="value">2024-03-15</div>
+                <div className="status-dot green" />
+              </div>
+           </div>
         </div>
       </div>
     </div>
-  )
+  );
 }

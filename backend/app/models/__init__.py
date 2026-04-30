@@ -63,6 +63,9 @@ class AnomalyType(str, enum.Enum):
     ROUTE_DEVIATION = "route_deviation"
     EXCESS_DWELL_TIME = "excess_dwell_time"
     SENSOR_OFFLINE = "sensor_offline"
+    FREEZE_EXCURSION = "freeze_excursion"
+    VIBRATION_SHOCK = "vibration_shock"
+    LIGHT_EXPOSURE = "light_exposure"
 
 
 class User(Base):
@@ -112,6 +115,11 @@ class Shipment(Base):
     carbon_footprint_kg = Column(Float, default=0.0)
     sustainability_score = Column(Float, default=100.0)
     genesis_hash = Column(String(64))
+
+    # Vaccine hardening fields
+    mkt = Column(Float, default=0.0) # Mean Kinetic Temperature
+    vvm_status = Column(Integer, default=1) # 1: Fresh, 2: Warning, 3: Danger, 4: Spoiled
+    cumulative_excursion_minutes = Column(Integer, default=0)
 
     created_by_user = relationship("User", back_populates="shipments")
     handoffs = relationship("HandoffRecord", back_populates="shipment", cascade="all, delete-orphan")
@@ -167,9 +175,13 @@ class DocumentRecord(Base):
     document_type = Column(String(100))
     description = Column(Text)
     storage_path = Column(String(500))
+    # Blockchain anchoring fields — proof of immutable hash registration
+    blockchain_tx = Column(String(255))       # TX hash returned from AnchorDocument chaincode
+    blockchain_status = Column(String(50))    # "confirmed" | "simulated" | "failed"
 
     shipment = relationship("Shipment", back_populates="documents")
     handoff = relationship("HandoffRecord", back_populates="documents")
+
 
 
 class SensorLog(Base):
@@ -265,3 +277,31 @@ class AuditLog(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="audit_logs")
+
+
+class ClaimStatus(str, enum.Enum):
+    OPEN = "open"
+    UNDER_REVIEW = "under_review"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    SETTLED = "settled"
+
+
+class Claim(Base):
+    __tablename__ = "claims"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    shipment_id = Column(String(36), ForeignKey("shipments.id"), nullable=False)
+    claim_ref = Column(String(50), unique=True, nullable=False)
+    claimant_name = Column(String(255), nullable=False)
+    claimant_email = Column(String(255))
+    reason = Column(Text, nullable=False)
+    estimated_loss_usd = Column(Float, default=0.0)
+    status = Column(String(50), default=ClaimStatus.OPEN.value)
+    evidence_summary = Column(Text)
+    resolution_notes = Column(Text)
+    resolved_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    shipment = relationship("Shipment")

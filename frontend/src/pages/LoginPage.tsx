@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import toast from 'react-hot-toast'
+import { Zap } from 'lucide-react'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('admin@cryotrace.io')
@@ -35,7 +36,7 @@ export default function LoginPage() {
       <div className="login-left">
         <div style={{ maxWidth: 520 }}>
           <div className="logo-mark" style={{ marginBottom: 32 }}>
-            <div className="logo-icon" style={{ width: 48, height: 48, fontSize: 26 }}>❄️</div>
+            <div className="logo-icon" style={{ width: 48, height: 48 }}><Zap size={24} fill="#fff" /></div>
             <div>
               <div className="logo-text" style={{ fontSize: 24 }}>CryoTrace</div>
               <div className="logo-sub">Cold Chain Intelligence Platform</div>
@@ -50,12 +51,12 @@ export default function LoginPage() {
           </p>
           <ul className="login-features">
             {[
-              '🔗 Immutable SHA-256 hash chain per handoff',
-              '🤖 XGBoost + Isolation Forest risk engine',
-              '📡 Live IoT sensor monitoring & alerts',
-              '⛓️ Hyperledger Fabric provenance records',
-              '🌍 WHO / FDA / EU regulatory compliance',
-              '📊 Predictive spoilage & fraud detection',
+              'Immutable SHA-256 hash chain per handoff',
+              'XGBoost + Isolation Forest risk engine',
+              'Live IoT sensor monitoring & alerts',
+              'Hyperledger Fabric provenance records',
+              'WHO / FDA / EU regulatory compliance',
+              'Predictive spoilage & fraud detection',
             ].map(f => (
               <li key={f} className="login-feature">{f}</li>
             ))}
@@ -78,7 +79,7 @@ export default function LoginPage() {
               <input className="form-input" type="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder="••••••••" />
             </div>
             <button className="btn btn-primary w-full" style={{ justifyContent: 'center', marginTop: 8 }} disabled={loading}>
-              {loading ? 'Signing in…' : 'Sign in to CryoTrace →'}
+              {loading ? 'Signing in…' : 'Sign in to CryoTrace'}
             </button>
           </form>
 

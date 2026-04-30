@@ -24,36 +24,35 @@ export default function VerifyPage() {
 
   return (
     <div className="verify-page">
-      <div className="verify-hero">
-        <div className="verify-container" style={{ color: '#fff' }}>
-          <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'center' }}>
-            <ShieldCheck size={48} color="#60a5fa" />
+      <div className="verify-hero" style={{ padding: '80px 0 100px' }}>
+        <div className="verify-container">
+          <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'center' }}>
+            <div className="flex-center" style={{ width: 64, height: 64, background: 'rgba(255,255,255,0.1)', borderRadius: 16, border: '1px solid rgba(255,255,255,0.1)' }}>
+               <ShieldCheck size={32} color="#60a5fa" />
+            </div>
           </div>
-          <h1 style={{ fontSize: 36, fontWeight: 800, marginBottom: 12 }}>CryoTrace Verify Portal</h1>
-          <p style={{ color: '#94a3b8', fontSize: 16, marginBottom: 32 }}>
-            Verify the authenticity and cold chain integrity of any shipment
+          <h1 style={{ fontSize: 42, fontWeight: 800, marginBottom: 12, color: '#fff', letterSpacing: '-1px' }}>Verify Your Shipment</h1>
+          <p style={{ color: '#94a3b8', fontSize: 18, marginBottom: 40, fontWeight: 400 }}>
+            Enter your batch number to verify blockchain authenticity and cold chain history.
           </p>
-          <form onSubmit={handleVerify} style={{ display: 'flex', gap: 12, maxWidth: 540, margin: '0 auto' }}>
+          <form onSubmit={handleVerify} style={{ display: 'flex', gap: 0, maxWidth: 600, margin: '0 auto', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.3)', borderRadius: 12, overflow: 'hidden' }}>
             <input
               className="form-input"
-              style={{ flex: 1, background: 'rgba(255,255,255,0.1)', border: '1.5px solid rgba(255,255,255,0.2)', color: '#fff' }}
-              placeholder="Enter Shipment ID or Batch Number…"
+              style={{ flex: 1, height: 60, padding: '0 24px', background: '#fff', border: 'none', borderRadius: 0, fontSize: 16, color: '#0f172a' }}
+              placeholder="e.g. BATCH-2026-X99"
               value={input}
               onChange={e => setInput(e.target.value)}
             />
-            <button className="btn btn-primary" type="submit" disabled={loading}>
-              <Search size={15} /> {loading ? 'Verifying…' : 'Verify'}
+            <button className="btn btn-primary" type="submit" style={{ height: 60, padding: '0 32px', borderRadius: 0, fontSize: 16 }} disabled={loading}>
+              {loading ? '...' : <Search size={20} />}
             </button>
-          </form>
-
-          {/* Demo shortcuts */}
-          <div style={{ marginTop: 16, display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+          </form>          {/* Demo shortcuts */}
+          <div style={{ marginTop: 24, display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
             {[
               { label: 'Pfizer Vaccine (Flagged)', id: '10000000-0000-0000-0000-000000000001' },
               { label: 'Mango Export (Clean)', id: '20000000-0000-0000-0000-000000000002' },
-              { label: 'Hepatitis Vaccine (Quarantined)', id: '30000000-0000-0000-0000-000000000003' },
             ].map(d => (
-              <button key={d.id} className="btn btn-ghost btn-sm" style={{ color: '#cbd5e1', borderColor: 'rgba(255,255,255,.2)', fontSize: 12 }}
+              <button key={d.id} className="btn btn-ghost btn-sm" style={{ color: '#cbd5e1', borderColor: 'rgba(255,255,255,.2)', fontSize: 12, background: 'rgba(255,255,255,0.05)' }}
                 onClick={() => { setInput(d.id); }}>
                 {d.label}
               </button>
@@ -77,17 +76,50 @@ function VerifyResult({ data, onBack }: { data: any; onBack: () => void }) {
 
   return (
     <div style={{ paddingBottom: 60 }}>
-      {/* Trust Banner */}
-      <div className="card" style={{ textAlign: 'center', padding: 32, marginBottom: 20, border: `2px solid ${safe ? '#86efac' : '#fca5a5'}`, background: safe ? '#f0fdf4' : '#fff1f2' }}>
-        {safe ? <ShieldCheck size={52} color="#16a34a" style={{ margin: '0 auto 12px' }} /> : <ShieldX size={52} color="#dc2626" style={{ margin: '0 auto 12px' }} />}
-        <h2 style={{ fontSize: 26, fontWeight: 800, color: safe ? '#15803d' : '#dc2626', marginBottom: 6 }}>
-          {safe ? '✅ Verified — Safe for Consumer' : '🚨 FLAGGED — Issues Detected'}
+      {/* Trust Status Header */}
+      <div className="card" style={{ padding: 40, marginBottom: 24, textAlign: 'center', borderTop: `6px solid ${safe ? '#16a34a' : '#dc2626'}` }}>
+        <div className="flex-center" style={{ marginBottom: 20 }}>
+          {safe ? (
+            <div style={{ width: 80, height: 80, background: '#dcfce7', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+               <ShieldCheck size={40} color="#16a34a" />
+            </div>
+          ) : (
+            <div style={{ width: 80, height: 80, background: '#fee2e2', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+               <ShieldX size={40} color="#dc2626" />
+            </div>
+          )}
+        </div>
+        <h2 style={{ fontSize: 32, fontWeight: 800, marginBottom: 8, color: safe ? '#15803d' : '#dc2626' }}>
+          {safe ? 'Authentic & Safe' : 'Security Warning'}
         </h2>
-        <p style={{ color: '#475569', fontSize: 14 }}>{data.name}</p>
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 16, flexWrap: 'wrap' }}>
-          {blockchain && <span className="chain-badge">⛓ Blockchain Verified</span>}
-          <span className={`badge badge-${safe ? 'green' : 'red'}`}>{data.status.replace('_',' ')}</span>
-          <span className="badge badge-blue">{data.category}</span>
+        <p className="text-secondary" style={{ fontSize: 16, marginBottom: 24 }}>{data.name} · Batch {data.batch_no}</p>
+        
+        <div className="flex-center gap-12">
+          {blockchain && <span className="chain-badge">Blockchain Verified</span>}
+          <span className={`badge badge-${safe ? 'green' : 'red'}`} style={{ padding: '6px 16px', fontSize: 13 }}>{data.status.replace('_',' ')}</span>
+        </div>
+      </div>
+
+      <div className="dashboard-grid">
+        <div className="flex flex-direction-column gap-24">
+          {/* Detailed Checks */}
+          <div className="card">
+            <div className="card-header"><span className="card-title">Verification Checks</span></div>
+            <div className="card-body">
+              {[
+                { label: 'Blockchain Integrity', status: data.integrity_score > 90 ? 'Pass' : 'Warning' },
+                { label: 'Cold Chain Compliance', status: data.freshness_score > 80 ? 'Pass' : 'Fail' },
+                { label: 'Provenance History', status: data.verified_blockchain ? 'Authentic' : 'Unknown' },
+              ].map(check => (
+                <div key={check.label} className="flex items-center justify-between py-12" style={{ borderBottom: '1px solid #f1f5f9' }}>
+                   <div className="flex items-center gap-12">
+                     <span style={{ fontWeight: 600, fontSize: 14 }}>{check.label}</span>
+                   </div>
+                   <span className={`badge badge-${check.status === 'Pass' || check.status === 'Authentic' ? 'green' : 'red'}`}>{check.status}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -136,16 +168,27 @@ function VerifyResult({ data, onBack }: { data: any; onBack: () => void }) {
         <div className="card-header"><span className="card-title">Verified Certificates & Documents</span></div>
         <div className="card-body">
           {data.documents.length === 0
-            ? <div className="alert alert-critical"><span>🚨</span><p>No documents found — this is a risk indicator</p></div>
+            ? <div className="alert alert-critical"><p>No documents found — this is a risk indicator</p></div>
             : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
                 {data.documents.map((d: any) => (
                   <div key={d.id} style={{ padding: 14, border: `1px solid ${d.tampered ? '#fca5a5' : '#86efac'}`, borderRadius: 8, background: d.tampered ? '#fff1f2' : '#f0fdf4' }}>
                     <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{d.original_filename || d.filename}</div>
-                    <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8 }}>{d.document_type}</div>
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
+                      <span>{d.document_type}</span>
+                      <a href={`http://localhost:8000/documents/${d.id}/download`} target="_blank" rel="noreferrer" style={{ color: '#2563eb', textDecoration: 'none' }}>Download</a>
+                    </div>
+                    {d.blockchain_tx && (
+                      <div style={{ marginBottom: 8, fontSize: 10, color: '#2563eb', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        Anchored on Chain
+                      </div>
+                    )}
+                    <div className="font-mono text-xs" style={{ color: '#64748b', marginBottom: 8, wordBreak: 'break-all', fontSize: 9 }}>
+                      Hash: {d.content_hash.slice(0, 32)}…
+                    </div>
                     {d.tampered
-                      ? <span className="badge badge-red">🚨 Tampered</span>
-                      : <span className="badge badge-green">✓ Verified</span>}
+                      ? <span className="badge badge-red">Hash Mismatch (Tampered)</span>
+                      : <span className="badge badge-green">Hash Verified (Authentic)</span>}
                   </div>
                 ))}
               </div>
@@ -160,7 +203,6 @@ function VerifyResult({ data, onBack }: { data: any; onBack: () => void }) {
           <div className="card-body">
             {data.anomalies.map((a: any) => (
               <div key={a.id} className={`alert alert-${a.severity}`} style={{ marginBottom: 8 }}>
-                <span>{a.severity === 'critical' ? '🚨' : '⚠️'}</span>
                 <div>
                   <strong style={{ textTransform: 'capitalize' }}>{a.anomaly_type.replace(/_/g,' ')}</strong>
                   <p style={{ fontSize: 12, marginTop: 2 }}>{a.description}</p>
@@ -175,7 +217,7 @@ function VerifyResult({ data, onBack }: { data: any; onBack: () => void }) {
       )}
 
       <div style={{ marginTop: 24, textAlign: 'center' }}>
-        <button className="btn btn-ghost" onClick={onBack}>← Verify Another Shipment</button>
+        <button className="btn btn-ghost" onClick={onBack}>Verify Another Shipment</button>
       </div>
     </div>
   )

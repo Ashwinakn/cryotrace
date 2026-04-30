@@ -85,7 +85,7 @@ export default function ShipmentsPage() {
           {loading ? (
             <div className="flex-center" style={{ padding: 60 }}><div className="spinner" /></div>
           ) : shipments.length === 0 ? (
-            <div className="empty-state"><div className="empty-state-icon">📦</div><p>No shipments found</p></div>
+            <div className="empty-state"><p>No shipments found</p></div>
           ) : (
             <table>
               <thead>
@@ -111,7 +111,7 @@ export default function ShipmentsPage() {
                     </td>
                     <td style={{ fontSize: 12 }}>
                       <span style={{ color: '#475569' }}>{s.origin.split(',')[0]}</span>
-                      <span style={{ color: '#94a3b8', margin: '0 4px' }}>→</span>
+                      <span style={{ color: '#94a3b8', margin: '0 4px' }}>{' -> '}</span>
                       <span style={{ color: '#475569' }}>{s.destination.split(',')[0]}</span>
                     </td>
                     <td><span className="badge badge-blue">{categoryLabel(s.category)}</span></td>
@@ -133,7 +133,7 @@ export default function ShipmentsPage() {
                     <td style={{ textAlign: 'center' }}>
                       {s.anomaly_count > 0 ? <span className="badge badge-red">{s.anomaly_count}</span> : <span style={{ color: '#94a3b8' }}>—</span>}
                     </td>
-                    <td><button className="btn btn-ghost btn-sm">View →</button></td>
+                    <td><button className="btn btn-ghost btn-sm">View</button></td>
                   </tr>
                 ))}
               </tbody>

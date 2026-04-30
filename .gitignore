@@ -1,15 +1,54 @@
+# ── Node / Frontend ──────────────────────────────────────────────────────────
 node_modules/
 dist/
 build/
-.env
+frontend/dist/
+frontend/node_modules/
+*.local
+
+# ── Python / Backend ─────────────────────────────────────────────────────────
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+*.egg-info/
+.eggs/
 venv/
 env/
 .venv/
 .pytest_cache/
-.DS_Store
+
+# ── Environment / Secrets ─────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Database ──────────────────────────────────────────────────────────────────
 *.db
-backend/cryotrace.db
-frontend/dist/
+*.sqlite
+*.sqlite3
+
+# ── Spark Streaming (runtime checkpoints — never commit these) ────────────────
+data/
+streaming/spark/checkpoint*/
+
+# ── Fabric Samples (100MB+ binary downloads — not source code) ───────────────
+fabric-samples/
+
+# ── Docker / Installer Binaries ───────────────────────────────────────────────
+DockerInstaller.exe
+*.exe
+*.msi
+
+# ── Uploads ───────────────────────────────────────────────────────────────────
+backend/uploads/
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+
+# ── Scratch / Utility Scripts ─────────────────────────────────────────────────
+migrate_vaccine.py
+check_vaccine_stats.py
+check_anomalies.py

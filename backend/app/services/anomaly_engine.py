@@ -119,9 +119,25 @@ def check_sensor_anomalies(log: SensorLog, shipment: Shipment) -> List[Anomaly]:
     if log.shock:
         anomalies.append(Anomaly(
             shipment_id=str(shipment.id),
-            anomaly_type=AnomalyType.ROUTE_DEVIATION.value,
+            anomaly_type=AnomalyType.VIBRATION_SHOCK.value,
             severity=AnomalySeverity.MEDIUM.value,
-            description="Shock/impact detected on container",
+            description="Significant shock/impact detected",
+        ))
+
+    if log.temperature < 0.0 and shipment.category == 'vaccines':
+        anomalies.append(Anomaly(
+            shipment_id=str(shipment.id),
+            anomaly_type=AnomalyType.FREEZE_EXCURSION.value,
+            severity=AnomalySeverity.CRITICAL.value,
+            description=f"FREEZE DETECTED: {log.temperature}°C. Most vaccines are permanently damaged by freezing.",
+        ))
+
+    if log.light is not None and log.light > 50:
+        anomalies.append(Anomaly(
+            shipment_id=str(shipment.id),
+            anomaly_type=AnomalyType.LIGHT_EXPOSURE.value,
+            severity=AnomalySeverity.HIGH.value,
+            description=f"Unauthorized light exposure detected: {log.light} lux",
         ))
 
     return anomalies

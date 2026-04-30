@@ -9,7 +9,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from app.database import engine, Base
-from app.routes import auth, shipments, handoffs, documents, sensors, ai_routes, verify, analytics, admin
+from app.routes import auth, shipments, handoffs, documents, sensors, ai_routes, verify, analytics, admin, claims, lte_device
 from app.config import settings
 from app.services.seed import seed_database
 
@@ -56,6 +56,8 @@ app.include_router(ai_routes.router, prefix="/ai", tags=["AI & Analytics"])
 app.include_router(verify.router, prefix="/verify", tags=["Public Verify"])
 app.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
 app.include_router(admin.router, prefix="/admin", tags=["Admin"])
+app.include_router(claims.router, prefix="/claims", tags=["Claims"])
+app.include_router(lte_device.router, prefix="/device", tags=["LTE Device"])
 
 
 @app.get("/health")

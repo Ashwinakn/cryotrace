@@ -74,7 +74,7 @@ export default function AdminDashboard() {
         </div>
         <div className="flex gap-8">
           <span className="badge badge-green"><span className="badge-dot" />Live</span>
-          <button className="btn btn-primary btn-sm" onClick={() => navigate('/shipments')}>View All Shipments →</button>
+          <button className="btn btn-primary btn-sm" onClick={() => navigate('/shipments')}>View All Shipments</button>
         </div>
       </div>
 
@@ -167,15 +167,14 @@ export default function AdminDashboard() {
       {/* Active Anomalies */}
       <div className="card">
         <div className="card-header">
-          <span className="card-title">⚠️ Active Anomalies</span>
+          <span className="card-title">Active Anomalies</span>
           <button className="btn btn-ghost btn-sm" onClick={() => navigate('/shipments')}>View All</button>
         </div>
         <div className="card-body">
           {anomalies.length === 0
-            ? <div className="empty-state"><div className="empty-state-icon">✅</div><p>No active anomalies</p></div>
+            ? <div className="empty-state"><p>No active anomalies</p></div>
             : anomalies.map((a: any) => (
               <div key={a.id} className={`alert alert-${a.severity}`} style={{ marginBottom: 8 }}>
-                <span className="alert-icon">⚠</span>
                 <div>
                   <strong style={{ textTransform: 'capitalize' }}>{a.anomaly_type.replace(/_/g, ' ')}</strong>
                   <p style={{ marginTop: 2, fontSize: 12 }}>{a.description}</p>

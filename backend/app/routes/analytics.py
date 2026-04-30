@@ -83,6 +83,36 @@ async def get_temp_excursions(days: int = 7, db: Session = Depends(get_db), curr
     return [{"date": str(r.date), "avg_temp": round(float(r.avg_temp or 0),2), "max_temp": round(float(r.max_temp or 0),2), "min_temp": round(float(r.min_temp or 0),2)} for r in rows]
 
 
+
+@router.get("/esg/summary")
+async def get_esg_summary(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Global ESG summary across all shipments."""
+    shipments_all = db.query(Shipment).all()
+    total_co2 = 0.0
+    total_energy = 0.0
+    total_waste = 0.0
+    total_trees = 0
+    compliance_scores = []
+    for s in shipments_all:
+        weight = s.weight_kg or 100
+        co2 = weight * 0.05 * 5
+        total_co2 += co2
+        total_energy += weight * 0.3 * 72
+        total_waste += (s.freshness_score / 100) * weight
+        total_trees += max(1, int(co2 / 21))
+        compliance_scores.append(s.sustainability_score)
+    avg_compliance = sum(compliance_scores) / len(compliance_scores) if compliance_scores else 100
+    return {
+        "total_co2_kg": round(total_co2, 2),
+        "total_energy_kwh": round(total_energy, 2),
+        "total_waste_prevented_kg": round(total_waste, 2),
+        "total_carbon_offset_trees": total_trees,
+        "avg_sustainability_score": round(avg_compliance, 2),
+        "shipments_tracked": len(shipments_all),
+        "cold_chain_compliance_pct": round(min(100, avg_compliance), 2),
+    }
+
+
 @router.get("/esg/{shipment_id}")
 async def get_esg(shipment_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     from fastapi import HTTPException

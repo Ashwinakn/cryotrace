@@ -236,7 +236,7 @@ async def seed_database():
             model_version="1.0.0"))
 
         db.commit()
-        print("✓ CryoTrace seeded with 3 demo shipments.")
+        print("[OK] CryoTrace seeded with 3 demo shipments.")
 
     except Exception as e:
         db.rollback()
